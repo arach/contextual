@@ -1,0 +1,313 @@
+/* ============================================================
+ * Hangar palette + chrome layered on top of HudsonKit.
+ * Hudson ships near-black panels already — we add the tactical
+ * orange accent, monospace labels, classification band, grid
+ * overlay, and the corner-bracket reticles.
+ * ============================================================ */
+
+:root {
+  /* Hangar palette — kept as CSS vars so any custom UI uses them. */
+  --hg-bg: #0a0d10;
+  --hg-bg-tint: #10151a;
+  --hg-surface: #141a20;
+  --hg-surface-2: #181f26;
+  --hg-ink: #e6ecf1;
+  --hg-ink-2: #aeb8c0;
+  --hg-muted: #5e6a74;
+  --hg-line: #1d262e;
+  --hg-hairline: #28333c;
+  --hg-accent: #ff7b2c;
+  --hg-accent-deep: #d8551a;
+  --hg-accent-tint: rgba(255, 123, 44, 0.16);
+  --hg-warn: #ff5050;
+  --hg-ok: #5ce085;
+
+  /* Typography — declarative aliases so we don't sprinkle font stacks. */
+  --hg-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --hg-sans: "Geist", system-ui, -apple-system, sans-serif;
+
+  /* Reusable spacing. */
+  --hg-band-height: 18px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--hg-bg);
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-attachment: fixed;
+  color: var(--hg-ink);
+  font-family: var(--hg-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--hg-accent);
+  color: var(--hg-bg);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+  background-clip: padding-box;
+}
+
+/* ============================================================
+ * Classification band — the "OPS // CONTEXTUAL // SESSION
+ * ACTIVE" sliver at the very top. Sits above Hudson's nav.
+ * ============================================================ */
+.hg-class-band {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--hg-band-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--hg-mono);
+  font-size: 9px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  background: var(--hg-accent);
+  color: var(--hg-bg);
+  font-weight: 700;
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* Push Hudson's chrome down so the band is visible. Hudson's NavigationBar
+ * is `fixed top-0 z-50` so we offset every fixed chrome surface by the band
+ * height. The Frame's content area is offset via the body padding. */
+body {
+  padding-top: var(--hg-band-height);
+}
+body > div#root {
+  /* Hudson chrome lives in the same #root, so nudge it down too. */
+  position: relative;
+  top: 0;
+}
+
+/* Hudson's fixed nav lives at .top-0 — shift it under the band. */
+.hg-shell .fixed.top-0:not(.hg-class-band) {
+  top: var(--hg-band-height) !important;
+}
+
+/* Hudson side panels live at .top-\[48px\] (escaped arbitrary value).
+ * Push them down by the band as well so they line up with the shifted nav. */
+.hg-shell .top-\[48px\] {
+  top: calc(48px + var(--hg-band-height)) !important;
+}
+
+/* Bottom status bar is anchored to viewport bottom — no shift needed. */
+
+/* ============================================================
+ * Faint orange grid overlay on the canvas/world. Sits above the
+ * background grid but below all chrome.
+ * ============================================================ */
+.hg-grid-overlay {
+  position: fixed;
+  inset: var(--hg-band-height) 0 0 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image:
+    linear-gradient(rgba(255, 123, 44, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 123, 44, 0.025) 1px, transparent 1px);
+  background-size: 8px 8px;
+  mix-blend-mode: screen;
+}
+
+/* ============================================================
+ * Accent color + tactical typography overrides for Hudson's chrome
+ * that we don't fully replace. We try to keep these surgical so the
+ * Hudson primitives keep their behavior.
+ * ============================================================ */
+
+/* Make the Hudson nav title read as a tactical callsign. */
+.hg-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--hg-mono);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--hg-ink);
+}
+.hg-brand .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hg-accent);
+  box-shadow: 0 0 14px var(--hg-accent);
+  animation: hg-pulse 1.4s ease-in-out infinite;
+}
+.hg-brand .sub {
+  color: var(--hg-muted);
+  letter-spacing: 0.12em;
+}
+@keyframes hg-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 16px var(--hg-accent);
+  }
+}
+
+/* ============================================================
+ * Generic primitives used inside panels — Button, Pill, KbdHint.
+ * Sharp 2px corners is the Hangar tell.
+ * ============================================================ */
+.hg-btn {
+  font-family: var(--hg-mono);
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 2px;
+  background: var(--hg-surface);
+  border: 1px solid var(--hg-line);
+  color: var(--hg-ink-2);
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  transition: background 100ms, border-color 100ms, color 100ms;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.hg-btn:hover {
+  background: var(--hg-bg-tint);
+  color: var(--hg-ink);
+}
+.hg-btn.primary {
+  background: var(--hg-accent);
+  color: var(--hg-bg);
+  border-color: var(--hg-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  box-shadow:
+    0 0 18px rgba(255, 123, 44, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.hg-btn.primary:hover {
+  background: var(--hg-accent-deep);
+  border-color: var(--hg-accent-deep);
+}
+.hg-btn.primary:disabled,
+.hg-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.hg-btn.warn {
+  color: var(--hg-warn);
+}
+.hg-btn.ghost {
+  background: transparent;
+  border-color: transparent;
+}
+.hg-btn.ghost:hover {
+  background: var(--hg-bg-tint);
+  border-color: var(--hg-line);
+}
+
+.hg-kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid var(--hg-line);
+  border-radius: 2px;
+  background: var(--hg-surface);
+  color: var(--hg-ink);
+  font-family: var(--hg-mono);
+  font-size: 10px;
+  margin: 0 2px;
+}
+
+.hg-pill {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--hg-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 2px;
+  background: var(--hg-bg-tint);
+  border: 1px solid var(--hg-line);
+  color: var(--hg-ink-2);
+}
+.hg-pill.accent {
+  background: var(--hg-accent-tint);
+  color: var(--hg-accent);
+  border-color: var(--hg-accent);
+}
+.hg-pill.warn {
+  background: rgba(255, 80, 80, 0.1);
+  color: var(--hg-warn);
+  border-color: rgba(255, 80, 80, 0.3);
+}
+
+.hg-section-label {
+  font-family: var(--hg-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hg-muted);
+}
+
+.hg-mono {
+  font-family: var(--hg-mono);
+}
+
+/* ============================================================
+ * Corner-bracket reticle — applied to .hg-reticle elements to
+ * give "selected/expanded" a targeting-system feel.
+ * ============================================================ */
+.hg-reticle {
+  position: relative;
+}
+.hg-reticle::before,
+.hg-reticle::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--hg-accent);
+  pointer-events: none;
+}
+.hg-reticle::before {
+  top: -1px;
+  left: -1px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.hg-reticle::after {
+  bottom: -1px;
+  right: -1px;
+  border-left: 0;
+  border-top: 0;
+}

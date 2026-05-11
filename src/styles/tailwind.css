@@ -1,0 +1,13 @@
+/* Tailwind v4 — picks up utility classes used in our own source.
+ *
+ * Hudson ships its own prebuilt stylesheet (hudsonkit/styles) which
+ * contains only the classes Hudson's chrome uses. By compiling Tailwind
+ * over OUR source as well, every utility we write — including arbitrary
+ * values like text-[var(--hg-muted)] and grid-cols-3 — resolves to real
+ * CSS rules. The two bundles co-exist; utility class names are identical
+ * across both, so there's no conflict.
+ */
+@import "tailwindcss";
+
+/* Tell Tailwind v4 where to look. */
+@source "../**/*.{ts,tsx}";
