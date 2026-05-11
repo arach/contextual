@@ -20,7 +20,7 @@ import { useThreadStore } from "@/state/useThreadStore";
 import { useCommands } from "@/state/useCommands";
 import { buildManifest } from "@/lib/derive";
 import { tokFor } from "@/lib/tokens";
-import { buildThreadPrompt, dispatchPi, branchPi } from "@/lib/pi";
+import { dispatchPi, branchPi } from "@/lib/pi";
 
 import { ClassificationBand } from "@/components/chrome/ClassificationBand";
 import { CommandPaletteHost } from "@/components/chrome/CommandPaletteHost";
@@ -50,6 +50,8 @@ export function App() {
   const [thinking, setThinking] = useState(false);
   const [mode, setMode] = useState<AppMode>("session");
   const [treeOpen, setTreeOpen] = useState(false);
+  // Bumped after every dispatch so the workspace badge refetches.
+  const [syncTick, setSyncTick] = useState(0);
   const [leftCollapsed, setLeftCollapsed] = usePersistentState("ctx.leftCollapsed", false);
   const [rightCollapsed, setRightCollapsed] = usePersistentState("ctx.rightCollapsed", false);
   const [leftWidth, setLeftWidth] = usePersistentState("ctx.leftWidth", LEFT_DEFAULT);
@@ -113,13 +115,11 @@ export function App() {
     if (!text) return;
     setThinking(true);
     try {
-      const prompt = buildThreadPrompt(threadAtDispatch, text);
-      const result = await dispatchPi(
-        threadAtDispatch.id,
-        threadAtDispatch.activeBranch,
-        prompt,
-      );
+      // The plugin materializes Fixed modules into the workspace and pi
+      // discovers them from cwd, so the wire payload is just (thread, text).
+      const result = await dispatchPi(threadAtDispatch, text);
       store.appendModelReply(result.reply);
+      setSyncTick((t) => t + 1);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       store.appendModelReply(`(pi unavailable — ${msg})`);
@@ -180,6 +180,7 @@ export function App() {
               <ContextRack
                 thread={store.active}
                 width={rightWidth}
+                syncTick={syncTick}
                 onResizeStart={onResize("right")}
                 isCollapsed={rightCollapsed}
                 onToggleCollapse={() => setRightCollapsed((c) => !c)}

@@ -1,18 +1,21 @@
 // Dev-only Vite plugin: routes the React app to the local `pi` CLI
 // (`@mariozechner/pi-coding-agent`), with a manifest mapping each
-// (threadId, branchId) pair to a pi session file. Three routes:
+// (threadId, branchId) pair to a pi session file, and per-thread workspaces
+// holding AGENTS.md + .pi/skills/ so pi natively discovers Fixed context
+// without it being re-stuffed into every prompt.
 //
-//   POST /api/pi/dispatch  { threadId, branchId, prompt, systemPrompt? }
+// Routes:
+//   POST /api/pi/dispatch  { threadId, branchId, prompt, fixed, task?, systemPrompt? }
 //   POST /api/pi/branch    { threadId, fromBranchId, newBranchId }
 //   GET  /api/pi/tree
+//   GET  /api/pi/workspace?threadId=…
 //
-// Session files live in ~/.contextual/sessions/ as JSONL (pi's native
-// format). The manifest at ~/.contextual/manifest.json persists across
-// dev-server restarts.
-//
-// Forking semantics: pi's --fork creates a new session file in
-// --session-dir and cannot combine with --session. We capture the new
-// path by snapshotting the directory before and after the call.
+// Storage layout under ~/.contextual/:
+//   sessions/          pi-managed JSONL session files
+//   workspaces/<id>/   one per thread; pi runs with cwd=this
+//     AGENTS.md          concat of kind=rules modules (project context)
+//     .pi/skills/<n>.md  one per kind=doc|log module (skills, frontmatter)
+//   manifest.json      (threadId,branchId) → sessionPath + forkFrom
 
 import type { Connect, Plugin } from "vite";
 import type { ServerResponse } from "node:http";
@@ -24,11 +27,18 @@ import * as os from "node:os";
 
 const ROOT = path.join(os.homedir(), ".contextual");
 const SESSION_DIR = path.join(ROOT, "sessions");
+const WORKSPACES_DIR = path.join(ROOT, "workspaces");
 const MANIFEST = path.join(ROOT, "manifest.json");
 
 interface Manifest {
-  /** (threadId, branchId) → session file path (absolute). */
   branches: Record<string, { sessionPath: string | null; forkFrom?: string | null }>;
+}
+
+interface FixedModule {
+  id: string;
+  name: string;
+  kind: "rules" | "doc" | "log";
+  body: string;
 }
 
 function key(threadId: string, branchId: string): string {
@@ -37,8 +47,7 @@ function key(threadId: string, branchId: string): string {
 
 async function loadManifest(): Promise<Manifest> {
   try {
-    const raw = await fs.readFile(MANIFEST, "utf8");
-    return JSON.parse(raw) as Manifest;
+    return JSON.parse(await fs.readFile(MANIFEST, "utf8")) as Manifest;
   } catch {
     return { branches: {} };
   }
@@ -51,9 +60,9 @@ async function saveManifest(m: Manifest): Promise<void> {
 
 async function ensureDirs(): Promise<void> {
   await fs.mkdir(SESSION_DIR, { recursive: true });
+  await fs.mkdir(WORKSPACES_DIR, { recursive: true });
 }
 
-/** Snapshot the session dir's file names so we can detect what pi just created. */
 async function listSessionFiles(): Promise<Set<string>> {
   try {
     const entries = await fs.readdir(SESSION_DIR);
@@ -63,8 +72,111 @@ async function listSessionFiles(): Promise<Set<string>> {
   }
 }
 
+// ---- Workspace materialization -------------------------------------------
+
+/** Sanitize a module name down to pi's skill-name rules (a-z, 0-9, hyphen). */
+function safeName(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+    .slice(0, 64);
+}
+
+function workspacePathFor(threadId: string): string {
+  return path.join(WORKSPACES_DIR, safeName(threadId));
+}
+
+interface MaterializedFile {
+  relpath: string;
+  bytes: number;
+}
+
+/**
+ * Write the Fixed module set into a workspace pi will discover:
+ *   AGENTS.md          ← concat of kind=rules modules
+ *   .pi/skills/<n>.md  ← one per kind=doc|log, with frontmatter
+ *
+ * Stale files (modules that were removed) get cleaned up. Returns the file
+ * listing so callers can show the user what's on disk.
+ */
+async function materializeWorkspace(
+  threadId: string,
+  modules: FixedModule[],
+): Promise<{ workspaceDir: string; files: MaterializedFile[] }> {
+  const dir = workspacePathFor(threadId);
+  const skillsDir = path.join(dir, ".pi", "skills");
+  await fs.mkdir(skillsDir, { recursive: true });
+
+  const rules = modules.filter((m) => m.kind === "rules");
+  const docs = modules.filter((m) => m.kind === "doc" || m.kind === "log");
+
+  // ---- AGENTS.md (rules → always-on context file) ----------------------
+  const agents =
+    rules.length === 0
+      ? ""
+      : [
+          "# Contextual workspace",
+          "",
+          `Thread: \`${threadId}\` · synced from Contextual's Fixed zone.`,
+          "",
+          ...rules.flatMap((m) => [
+            `## ${m.name}`,
+            "",
+            m.body.trim(),
+            "",
+          ]),
+        ].join("\n");
+
+  const agentsPath = path.join(dir, "AGENTS.md");
+  if (agents) {
+    await fs.writeFile(agentsPath, agents + "\n");
+  } else {
+    await fs.rm(agentsPath, { force: true });
+  }
+
+  // ---- .pi/skills/<name>.md (doc + log → on-demand skills) -------------
+  const wantedSkills = new Map<string, string>();
+  for (const m of docs) {
+    const name = safeName(m.name);
+    const desc = m.body.replace(/\s+/g, " ").slice(0, 280).trim();
+    const front =
+      `---\nname: ${name}\ndescription: ${desc}\n---\n\n` +
+      `# ${m.name}\n\n${m.body.trim()}\n`;
+    wantedSkills.set(`${name}.md`, front);
+  }
+  // Write wanted skills.
+  for (const [file, content] of wantedSkills) {
+    await fs.writeFile(path.join(skillsDir, file), content);
+  }
+  // Clean up stale skills.
+  for (const existing of await fs.readdir(skillsDir).catch(() => [] as string[])) {
+    if (!existing.endsWith(".md")) continue;
+    if (!wantedSkills.has(existing)) {
+      await fs.rm(path.join(skillsDir, existing), { force: true });
+    }
+  }
+
+  // ---- File listing for response --------------------------------------
+  const files: MaterializedFile[] = [];
+  if (agents) {
+    files.push({ relpath: "AGENTS.md", bytes: Buffer.byteLength(agents) });
+  }
+  for (const [file, content] of wantedSkills) {
+    files.push({
+      relpath: path.posix.join(".pi", "skills", file),
+      bytes: Buffer.byteLength(content),
+    });
+  }
+  return { workspaceDir: dir, files };
+}
+
+// ---- Pi invocation -------------------------------------------------------
+
 interface RunOpts {
   prompt: string;
+  cwd: string;
   sessionPath?: string | null;
   forkFrom?: string | null;
   systemPrompt?: string;
@@ -78,11 +190,6 @@ interface RunResult {
   forked: boolean;
 }
 
-/**
- * Run pi once. Returns the reply text plus the resolved session path. If
- * --fork was used (or no session existed), the new file is detected by
- * diffing the session directory before and after the call.
- */
 async function runPi(opts: RunOpts): Promise<RunResult> {
   await ensureDirs();
   const before = await listSessionFiles();
@@ -100,24 +207,31 @@ async function runPi(opts: RunOpts): Promise<RunResult> {
     args.push("--session-dir", SESSION_DIR);
   }
 
+  // Pi's skills follow progressive disclosure: descriptions live in the
+  // system prompt, full SKILL.md bodies load only when the model invokes
+  // `read`. Enable just that tool so doc/log modules become genuinely
+  // available without exposing edit/write/bash.
+  args.push("--tools", "read");
+
   const provider = opts.provider ?? process.env.CTX_PI_PROVIDER;
   const model = opts.model ?? process.env.CTX_PI_MODEL;
   if (provider) args.push("--provider", provider);
   if (model) args.push("--model", model);
-  if (opts.systemPrompt) args.push("--system-prompt", opts.systemPrompt);
+  if (opts.systemPrompt) args.push("--append-system-prompt", opts.systemPrompt);
 
   const reply = await new Promise<string>((resolve, reject) => {
     const child = spawn("pi", args, {
+      cwd: opts.cwd,
       env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "";
     let err = "";
-    child.stdout.on("data", (chunk) => {
-      out += chunk.toString("utf8");
+    child.stdout.on("data", (c) => {
+      out += c.toString("utf8");
     });
-    child.stderr.on("data", (chunk) => {
-      err += chunk.toString("utf8");
+    child.stderr.on("data", (c) => {
+      err += c.toString("utf8");
     });
     child.on("error", reject);
     child.on("close", (code) => {
@@ -131,14 +245,12 @@ async function runPi(opts: RunOpts): Promise<RunResult> {
     const after = await listSessionFiles();
     const created = [...after].filter((f) => !before.has(f));
     if (created.length > 0) {
-      // Pick the most recently named file (timestamp-prefixed).
       created.sort();
       resolvedPath = path.join(SESSION_DIR, created[created.length - 1]);
     } else if (!resolvedPath) {
       throw new Error("pi did not create a session file");
     }
   }
-
   return { reply, sessionPath: resolvedPath, forked };
 }
 
@@ -263,6 +375,8 @@ async function handleDispatch(req: Connect.IncomingMessage, res: ServerResponse)
     threadId?: string;
     branchId?: string;
     prompt?: string;
+    fixed?: FixedModule[];
+    task?: string;
     systemPrompt?: string;
   };
   const body = (await readBody(req)) as Body;
@@ -274,30 +388,45 @@ async function handleDispatch(req: Connect.IncomingMessage, res: ServerResponse)
   const slot = manifest.branches[key(body.threadId, body.branchId)] ?? {
     sessionPath: null,
   };
+
+  // Materialize Fixed modules as files pi will auto-discover from cwd.
+  const { workspaceDir, files } = await materializeWorkspace(
+    body.threadId,
+    body.fixed ?? [],
+  );
+
+  // Compose the user message — context files carry the standing rules; the
+  // prompt only needs the current task + user input.
+  const promptBody =
+    body.task && body.task.trim()
+      ? `Current task: ${body.task.trim()}\n\nUser: ${body.prompt}`
+      : body.prompt;
+
   console.log(
-    `[pi] dispatch ${body.threadId}/${body.branchId} (session=${slot.sessionPath ?? "new"}${slot.forkFrom ? `, fork=${slot.forkFrom}` : ""})`,
+    `[pi] dispatch ${body.threadId}/${body.branchId} (cwd=${workspaceDir}, files=${files.length}, session=${slot.sessionPath ?? "new"}${slot.forkFrom ? `, fork=${slot.forkFrom}` : ""})`,
   );
   try {
     const result = await runPi({
-      prompt: body.prompt,
+      prompt: promptBody,
+      cwd: workspaceDir,
       sessionPath: slot.sessionPath,
       forkFrom: slot.forkFrom ?? undefined,
       systemPrompt: body.systemPrompt,
     });
     manifest.branches[key(body.threadId, body.branchId)] = {
       sessionPath: result.sessionPath,
-      // forkFrom is consumed by the first dispatch — clear it so subsequent
-      // calls go through --session as continuations.
       forkFrom: null,
     };
     await saveManifest(manifest);
     console.log(
-      `[pi] reply in ${Date.now() - t0}ms (${result.reply.length} chars, session=${result.sessionPath})`,
+      `[pi] reply in ${Date.now() - t0}ms (${result.reply.length} chars)`,
     );
     json(res, 200, {
       reply: result.reply,
       sessionPath: result.sessionPath,
       forked: result.forked,
+      workspaceDir,
+      files,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -330,11 +459,39 @@ async function handleBranch(req: Connect.IncomingMessage, res: ServerResponse) {
 
 async function handleTree(_req: Connect.IncomingMessage, res: ServerResponse) {
   try {
-    const data = await gatherTree();
-    json(res, 200, data);
+    json(res, 200, await gatherTree());
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    json(res, 500, { error: msg });
+    json(res, 500, { error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+async function handleWorkspace(req: Connect.IncomingMessage, res: ServerResponse) {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const threadId = url.searchParams.get("threadId");
+  if (!threadId) return json(res, 400, { error: "threadId required" });
+  const dir = workspacePathFor(threadId);
+  try {
+    const stat = await fs.stat(dir).catch(() => null);
+    if (!stat) return json(res, 200, { workspaceDir: dir, files: [] });
+    const files: MaterializedFile[] = [];
+    const walk = async (sub: string) => {
+      const full = path.join(dir, sub);
+      const entries = await fs.readdir(full).catch(() => [] as string[]);
+      for (const name of entries) {
+        const rel = path.posix.join(sub, name);
+        const s = await fs.stat(path.join(dir, rel));
+        if (s.isDirectory()) {
+          await walk(rel);
+        } else if (name.endsWith(".md")) {
+          files.push({ relpath: rel, bytes: s.size });
+        }
+      }
+    };
+    await walk("");
+    files.sort((a, b) => a.relpath.localeCompare(b.relpath));
+    json(res, 200, { workspaceDir: dir, files });
+  } catch (e) {
+    json(res, 500, { error: e instanceof Error ? e.message : String(e) });
   }
 }
 
@@ -352,6 +509,10 @@ const handler: Connect.NextHandleFunction = (req, res, next) => {
     void handleTree(req, res);
     return;
   }
+  if (req.method === "GET" && url === "/api/pi/workspace") {
+    void handleWorkspace(req, res);
+    return;
+  }
   next();
 };
 
@@ -359,8 +520,8 @@ export function piPlugin(): Plugin {
   return {
     name: "vite-plugin-pi",
     configureServer(server) {
-      // Make sure the storage dirs exist before the first request lands.
       fsSync.mkdirSync(SESSION_DIR, { recursive: true });
+      fsSync.mkdirSync(WORKSPACES_DIR, { recursive: true });
       server.middlewares.use(handler);
     },
   };
