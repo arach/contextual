@@ -3,7 +3,7 @@
 // the Fixed module list changes, so it reflects what's actually on disk.
 
 import { useEffect, useState } from "react";
-import { fetchPiWorkspace, type WorkspaceFile } from "@/lib/pi";
+import { fetchWorkspace, type WorkspaceFile } from "@/lib/backends/client";
 
 interface WorkspaceBadgeProps {
   threadId: string;
@@ -19,7 +19,7 @@ export function WorkspaceBadge({ threadId, syncTick = 0 }: WorkspaceBadgeProps) 
 
   useEffect(() => {
     let cancelled = false;
-    fetchPiWorkspace(threadId)
+    fetchWorkspace(threadId)
       .then((d) => {
         if (cancelled) return;
         setFiles(d.files);

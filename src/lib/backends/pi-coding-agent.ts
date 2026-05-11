@@ -1,29 +1,27 @@
-// Dev-only Vite plugin: routes the React app to the local `pi` CLI
-// (`@mariozechner/pi-coding-agent`), with a manifest mapping each
-// (threadId, branchId) pair to a pi session file, and per-thread workspaces
-// holding AGENTS.md + .pi/skills/ so pi natively discovers Fixed context
-// without it being re-stuffed into every prompt.
-//
-// Routes:
-//   POST /api/pi/dispatch  { threadId, branchId, prompt, fixed, task?, systemPrompt? }
-//   POST /api/pi/branch    { threadId, fromBranchId, newBranchId }
-//   GET  /api/pi/tree
-//   GET  /api/pi/workspace?threadId=…
+// pi-coding-agent backend — spawns the `pi` CLI per dispatch, with a manifest
+// mapping (threadId, branchId) pairs to pi session files and per-thread
+// workspaces holding AGENTS.md + .pi/skills/ for native skill discovery.
 //
 // Storage layout under ~/.contextual/:
 //   sessions/          pi-managed JSONL session files
 //   workspaces/<id>/   one per thread; pi runs with cwd=this
-//     AGENTS.md          concat of kind=rules modules (project context)
-//     .pi/skills/<n>.md  one per kind=doc|log module (skills, frontmatter)
-//   manifest.json      (threadId,branchId) → sessionPath + forkFrom
+//     AGENTS.md          concat of kind=rules modules
+//     .pi/skills/<n>.md  one per kind=doc|log module (frontmatter)
+//   manifest.json      (threadId, branchId) → sessionPath + forkFrom
 
-import type { Connect, Plugin } from "vite";
-import type { ServerResponse } from "node:http";
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import * as fsSync from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
+import * as path from "node:path";
+
+import type {
+  Backend,
+  BranchRequest,
+  DispatchRequest,
+  DispatchResult,
+} from "./types";
+import type { ContextModule } from "../../types";
 
 const ROOT = path.join(os.homedir(), ".contextual");
 const SESSION_DIR = path.join(ROOT, "sessions");
@@ -32,13 +30,6 @@ const MANIFEST = path.join(ROOT, "manifest.json");
 
 interface Manifest {
   branches: Record<string, { sessionPath: string | null; forkFrom?: string | null }>;
-}
-
-interface FixedModule {
-  id: string;
-  name: string;
-  kind: "rules" | "doc" | "log";
-  body: string;
 }
 
 function key(threadId: string, branchId: string): string {
@@ -74,7 +65,6 @@ async function listSessionFiles(): Promise<Set<string>> {
 
 // ---- Workspace materialization -------------------------------------------
 
-/** Sanitize a module name down to pi's skill-name rules (a-z, 0-9, hyphen). */
 function safeName(s: string): string {
   return s
     .toLowerCase()
@@ -93,17 +83,9 @@ interface MaterializedFile {
   bytes: number;
 }
 
-/**
- * Write the Fixed module set into a workspace pi will discover:
- *   AGENTS.md          ← concat of kind=rules modules
- *   .pi/skills/<n>.md  ← one per kind=doc|log, with frontmatter
- *
- * Stale files (modules that were removed) get cleaned up. Returns the file
- * listing so callers can show the user what's on disk.
- */
 async function materializeWorkspace(
   threadId: string,
-  modules: FixedModule[],
+  modules: ContextModule[],
 ): Promise<{ workspaceDir: string; files: MaterializedFile[] }> {
   const dir = workspacePathFor(threadId);
   const skillsDir = path.join(dir, ".pi", "skills");
@@ -112,7 +94,6 @@ async function materializeWorkspace(
   const rules = modules.filter((m) => m.kind === "rules");
   const docs = modules.filter((m) => m.kind === "doc" || m.kind === "log");
 
-  // ---- AGENTS.md (rules → always-on context file) ----------------------
   const agents =
     rules.length === 0
       ? ""
@@ -121,12 +102,7 @@ async function materializeWorkspace(
           "",
           `Thread: \`${threadId}\` · synced from Contextual's Fixed zone.`,
           "",
-          ...rules.flatMap((m) => [
-            `## ${m.name}`,
-            "",
-            m.body.trim(),
-            "",
-          ]),
+          ...rules.flatMap((m) => [`## ${m.name}`, "", m.body.trim(), ""]),
         ].join("\n");
 
   const agentsPath = path.join(dir, "AGENTS.md");
@@ -136,7 +112,6 @@ async function materializeWorkspace(
     await fs.rm(agentsPath, { force: true });
   }
 
-  // ---- .pi/skills/<name>.md (doc + log → on-demand skills) -------------
   const wantedSkills = new Map<string, string>();
   for (const m of docs) {
     const name = safeName(m.name);
@@ -146,11 +121,9 @@ async function materializeWorkspace(
       `# ${m.name}\n\n${m.body.trim()}\n`;
     wantedSkills.set(`${name}.md`, front);
   }
-  // Write wanted skills.
   for (const [file, content] of wantedSkills) {
     await fs.writeFile(path.join(skillsDir, file), content);
   }
-  // Clean up stale skills.
   for (const existing of await fs.readdir(skillsDir).catch(() => [] as string[])) {
     if (!existing.endsWith(".md")) continue;
     if (!wantedSkills.has(existing)) {
@@ -158,7 +131,6 @@ async function materializeWorkspace(
     }
   }
 
-  // ---- File listing for response --------------------------------------
   const files: MaterializedFile[] = [];
   if (agents) {
     files.push({ relpath: "AGENTS.md", bytes: Buffer.byteLength(agents) });
@@ -184,13 +156,9 @@ interface RunOpts {
   model?: string;
 }
 
-interface RunResult {
-  reply: string;
-  sessionPath: string;
-  forked: boolean;
-}
-
-async function runPi(opts: RunOpts): Promise<RunResult> {
+async function runPi(
+  opts: RunOpts,
+): Promise<{ reply: string; sessionPath: string; forked: boolean }> {
   await ensureDirs();
   const before = await listSessionFiles();
 
@@ -206,11 +174,6 @@ async function runPi(opts: RunOpts): Promise<RunResult> {
   } else {
     args.push("--session-dir", SESSION_DIR);
   }
-
-  // Pi's skills follow progressive disclosure: descriptions live in the
-  // system prompt, full SKILL.md bodies load only when the model invokes
-  // `read`. Enable just that tool so doc/log modules become genuinely
-  // available without exposing edit/write/bash.
   args.push("--tools", "read");
 
   const provider = opts.provider ?? process.env.CTX_PI_PROVIDER;
@@ -254,9 +217,84 @@ async function runPi(opts: RunOpts): Promise<RunResult> {
   return { reply, sessionPath: resolvedPath, forked };
 }
 
-// ---- Tree / introspection -------------------------------------------------
+// ---- Backend implementation ----------------------------------------------
 
-interface SessionSummary {
+async function dispatch(req: DispatchRequest): Promise<DispatchResult> {
+  if (req.config.backend !== "pi-coding-agent") {
+    throw new Error(`pi-coding-agent backend received config for ${req.config.backend}`);
+  }
+  const manifest = await loadManifest();
+  const slot = manifest.branches[key(req.threadId, req.branchId)] ?? {
+    sessionPath: null,
+  };
+
+  const { workspaceDir, files } = await materializeWorkspace(req.threadId, req.fixed);
+
+  const taskLine = req.task?.body.trim();
+  const promptBody = taskLine
+    ? `Current task: ${taskLine}\n\nUser: ${req.user}`
+    : req.user;
+
+  console.log(
+    `[pi-coding-agent] dispatch ${req.threadId}/${req.branchId} (cwd=${workspaceDir}, files=${files.length}, session=${slot.sessionPath ?? "new"}${slot.forkFrom ? `, fork=${slot.forkFrom}` : ""})`,
+  );
+
+  const t0 = Date.now();
+  const result = await runPi({
+    prompt: promptBody,
+    cwd: workspaceDir,
+    sessionPath: slot.sessionPath,
+    forkFrom: slot.forkFrom ?? undefined,
+    systemPrompt: req.systemPrompt,
+  });
+  manifest.branches[key(req.threadId, req.branchId)] = {
+    sessionPath: result.sessionPath,
+    forkFrom: null,
+  };
+  await saveManifest(manifest);
+
+  console.log(
+    `[pi-coding-agent] reply in ${Date.now() - t0}ms (${result.reply.length} chars)`,
+  );
+
+  return {
+    reply: result.reply,
+    sessionPath: result.sessionPath,
+    forkedFrom: result.forked ? slot.forkFrom ?? undefined : undefined,
+    workspace: { dir: workspaceDir, files },
+  };
+}
+
+async function branch(req: BranchRequest): Promise<{ pending: boolean }> {
+  const manifest = await loadManifest();
+  const parent = manifest.branches[key(req.threadId, req.fromBranchId)];
+  manifest.branches[key(req.threadId, req.newBranchId)] = {
+    sessionPath: null,
+    forkFrom: parent?.sessionPath ?? null,
+  };
+  await saveManifest(manifest);
+  console.log(
+    `[pi-coding-agent] branch ${req.threadId}/${req.fromBranchId} → ${req.newBranchId} (parent=${parent?.sessionPath ?? "none"})`,
+  );
+  return { pending: parent?.sessionPath != null };
+}
+
+export const piCodingAgentBackend: Backend = {
+  id: "pi-coding-agent",
+  label: "pi · sessions",
+  capabilities: {
+    hasNativeSessions: true,
+    hasOAuth: false,
+    hasModelPicker: false,
+    hasStreaming: false,
+  },
+  dispatch,
+  branch,
+};
+
+// ---- Tree / introspection (exposed to HTTP layer) ------------------------
+
+export interface SessionSummary {
   path: string;
   id: string;
   cwd: string;
@@ -330,13 +368,13 @@ async function summarizeSession(p: string): Promise<SessionSummary | null> {
   }
 }
 
-async function gatherTree(): Promise<{
+export async function gatherTree(): Promise<{
   sessions: SessionSummary[];
   branches: Record<string, { sessionPath: string | null; forkFrom?: string | null }>;
 }> {
   await ensureDirs();
   const manifest = await loadManifest();
-  const entries = await fs.readdir(SESSION_DIR);
+  const entries = await fs.readdir(SESSION_DIR).catch(() => [] as string[]);
   const sessions: SessionSummary[] = [];
   for (const f of entries) {
     if (!f.endsWith(".jsonl")) continue;
@@ -347,182 +385,32 @@ async function gatherTree(): Promise<{
   return { sessions, branches: manifest.branches };
 }
 
-// ---- HTTP handlers --------------------------------------------------------
-
-function readBody(req: Connect.IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c: Buffer) => chunks.push(c));
-    req.on("end", () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"));
-      } catch (e) {
-        reject(e);
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-function json(res: ServerResponse, status: number, body: unknown): void {
-  res.statusCode = status;
-  res.setHeader("content-type", "application/json");
-  res.end(JSON.stringify(body));
-}
-
-async function handleDispatch(req: Connect.IncomingMessage, res: ServerResponse) {
-  type Body = {
-    threadId?: string;
-    branchId?: string;
-    prompt?: string;
-    fixed?: FixedModule[];
-    task?: string;
-    systemPrompt?: string;
-  };
-  const body = (await readBody(req)) as Body;
-  if (!body.prompt || !body.threadId || !body.branchId) {
-    return json(res, 400, { error: "threadId, branchId, prompt required" });
-  }
-  const t0 = Date.now();
-  const manifest = await loadManifest();
-  const slot = manifest.branches[key(body.threadId, body.branchId)] ?? {
-    sessionPath: null,
-  };
-
-  // Materialize Fixed modules as files pi will auto-discover from cwd.
-  const { workspaceDir, files } = await materializeWorkspace(
-    body.threadId,
-    body.fixed ?? [],
-  );
-
-  // Compose the user message — context files carry the standing rules; the
-  // prompt only needs the current task + user input.
-  const promptBody =
-    body.task && body.task.trim()
-      ? `Current task: ${body.task.trim()}\n\nUser: ${body.prompt}`
-      : body.prompt;
-
-  console.log(
-    `[pi] dispatch ${body.threadId}/${body.branchId} (cwd=${workspaceDir}, files=${files.length}, session=${slot.sessionPath ?? "new"}${slot.forkFrom ? `, fork=${slot.forkFrom}` : ""})`,
-  );
-  try {
-    const result = await runPi({
-      prompt: promptBody,
-      cwd: workspaceDir,
-      sessionPath: slot.sessionPath,
-      forkFrom: slot.forkFrom ?? undefined,
-      systemPrompt: body.systemPrompt,
-    });
-    manifest.branches[key(body.threadId, body.branchId)] = {
-      sessionPath: result.sessionPath,
-      forkFrom: null,
-    };
-    await saveManifest(manifest);
-    console.log(
-      `[pi] reply in ${Date.now() - t0}ms (${result.reply.length} chars)`,
-    );
-    json(res, 200, {
-      reply: result.reply,
-      sessionPath: result.sessionPath,
-      forked: result.forked,
-      workspaceDir,
-      files,
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[pi] dispatch error: ${msg}`);
-    json(res, 500, { error: msg });
-  }
-}
-
-async function handleBranch(req: Connect.IncomingMessage, res: ServerResponse) {
-  type Body = { threadId?: string; fromBranchId?: string; newBranchId?: string };
-  const body = (await readBody(req)) as Body;
-  if (!body.threadId || !body.fromBranchId || !body.newBranchId) {
-    return json(res, 400, { error: "threadId, fromBranchId, newBranchId required" });
-  }
-  const manifest = await loadManifest();
-  const parent = manifest.branches[key(body.threadId, body.fromBranchId)];
-  manifest.branches[key(body.threadId, body.newBranchId)] = {
-    sessionPath: null,
-    forkFrom: parent?.sessionPath ?? null,
-  };
-  await saveManifest(manifest);
-  console.log(
-    `[pi] branch ${body.threadId}/${body.fromBranchId} → ${body.newBranchId} (parent=${parent?.sessionPath ?? "none"})`,
-  );
-  json(res, 200, {
-    forkFrom: parent?.sessionPath ?? null,
-    pending: parent?.sessionPath != null,
-  });
-}
-
-async function handleTree(_req: Connect.IncomingMessage, res: ServerResponse) {
-  try {
-    json(res, 200, await gatherTree());
-  } catch (e) {
-    json(res, 500, { error: e instanceof Error ? e.message : String(e) });
-  }
-}
-
-async function handleWorkspace(req: Connect.IncomingMessage, res: ServerResponse) {
-  const url = new URL(req.url ?? "/", "http://localhost");
-  const threadId = url.searchParams.get("threadId");
-  if (!threadId) return json(res, 400, { error: "threadId required" });
+export async function gatherWorkspace(
+  threadId: string,
+): Promise<{ workspaceDir: string; files: MaterializedFile[] }> {
   const dir = workspacePathFor(threadId);
-  try {
-    const stat = await fs.stat(dir).catch(() => null);
-    if (!stat) return json(res, 200, { workspaceDir: dir, files: [] });
-    const files: MaterializedFile[] = [];
-    const walk = async (sub: string) => {
-      const full = path.join(dir, sub);
-      const entries = await fs.readdir(full).catch(() => [] as string[]);
-      for (const name of entries) {
-        const rel = path.posix.join(sub, name);
-        const s = await fs.stat(path.join(dir, rel));
-        if (s.isDirectory()) {
-          await walk(rel);
-        } else if (name.endsWith(".md")) {
-          files.push({ relpath: rel, bytes: s.size });
-        }
+  const stat = await fs.stat(dir).catch(() => null);
+  if (!stat) return { workspaceDir: dir, files: [] };
+  const files: MaterializedFile[] = [];
+  const walk = async (sub: string) => {
+    const full = path.join(dir, sub);
+    const entries = await fs.readdir(full).catch(() => [] as string[]);
+    for (const name of entries) {
+      const rel = path.posix.join(sub, name);
+      const s = await fs.stat(path.join(dir, rel));
+      if (s.isDirectory()) {
+        await walk(rel);
+      } else if (name.endsWith(".md")) {
+        files.push({ relpath: rel, bytes: s.size });
       }
-    };
-    await walk("");
-    files.sort((a, b) => a.relpath.localeCompare(b.relpath));
-    json(res, 200, { workspaceDir: dir, files });
-  } catch (e) {
-    json(res, 500, { error: e instanceof Error ? e.message : String(e) });
-  }
+    }
+  };
+  await walk("");
+  files.sort((a, b) => a.relpath.localeCompare(b.relpath));
+  return { workspaceDir: dir, files };
 }
 
-const handler: Connect.NextHandleFunction = (req, res, next) => {
-  const url = (req.url ?? "").split("?")[0];
-  if (req.method === "POST" && url === "/api/pi/dispatch") {
-    void handleDispatch(req, res);
-    return;
-  }
-  if (req.method === "POST" && url === "/api/pi/branch") {
-    void handleBranch(req, res);
-    return;
-  }
-  if (req.method === "GET" && url === "/api/pi/tree") {
-    void handleTree(req, res);
-    return;
-  }
-  if (req.method === "GET" && url === "/api/pi/workspace") {
-    void handleWorkspace(req, res);
-    return;
-  }
-  next();
-};
-
-export function piPlugin(): Plugin {
-  return {
-    name: "vite-plugin-pi",
-    configureServer(server) {
-      fsSync.mkdirSync(SESSION_DIR, { recursive: true });
-      fsSync.mkdirSync(WORKSPACES_DIR, { recursive: true });
-      server.middlewares.use(handler);
-    },
-  };
+export function ensureBackendDirs(): void {
+  fsSync.mkdirSync(SESSION_DIR, { recursive: true });
+  fsSync.mkdirSync(WORKSPACES_DIR, { recursive: true });
 }

@@ -2,6 +2,8 @@
 // pill (session/designer), and the shortcut/meta actions.
 import { NavigationBar } from "hudsonkit/chrome";
 import type { AppMode } from "@/App";
+import type { BackendConfig } from "@/types";
+import { BackendChip } from "@/components/chrome/BackendChip";
 import { BrandMark } from "@/components/chrome/BrandMark";
 import { TopBarActions } from "@/components/chrome/TopBarActions";
 import { ModeSwitch } from "@/components/chrome/ModeSwitch";
@@ -12,9 +14,19 @@ interface TopBarProps {
   threadName: string;
   activeBranch: string;
   threadCount: number;
+  backendConfig: BackendConfig;
+  onBackendChange: (next: BackendConfig) => void;
 }
 
-export function TopBar({ mode, onModeChange, threadName, activeBranch, threadCount }: TopBarProps) {
+export function TopBar({
+  mode,
+  onModeChange,
+  threadName,
+  activeBranch,
+  threadCount,
+  backendConfig,
+  onBackendChange,
+}: TopBarProps) {
   return (
     <NavigationBar
       title="CONTEXTUAL"
@@ -35,6 +47,9 @@ export function TopBar({ mode, onModeChange, threadName, activeBranch, threadCou
         <div className="flex items-center gap-4">
           <BrandMark />
           <ModeSwitch mode={mode} onChange={onModeChange} />
+          {mode === "session" && (
+            <BackendChip value={backendConfig} onChange={onBackendChange} />
+          )}
         </div>
       }
       actions={<TopBarActions threadCount={threadCount} />}

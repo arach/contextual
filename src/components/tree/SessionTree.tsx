@@ -5,8 +5,8 @@
 // Rendered as a fixed overlay above the chrome. ESC or backdrop click closes.
 
 import { useEffect, useMemo, useState } from "react";
-import type { PiSessionSummary, PiTreeResponse } from "@/lib/pi";
-import { fetchPiTree } from "@/lib/pi";
+import type { SessionSummary, TreeResponse } from "@/lib/backends/client";
+import { fetchTree } from "@/lib/backends/client";
 
 interface SessionTreeProps {
   isOpen: boolean;
@@ -14,13 +14,13 @@ interface SessionTreeProps {
 }
 
 interface TreeNode {
-  session: PiSessionSummary;
+  session: SessionSummary;
   children: TreeNode[];
   /** "{threadId}::{branchId}" bindings that point here, if any. */
   bindings: string[];
 }
 
-function buildForest(data: PiTreeResponse): TreeNode[] {
+function buildForest(data: TreeResponse): TreeNode[] {
   const byPath = new Map<string, TreeNode>();
   for (const s of data.sessions) {
     byPath.set(s.path, { session: s, children: [], bindings: [] });
@@ -48,7 +48,7 @@ function buildForest(data: PiTreeResponse): TreeNode[] {
 }
 
 export function SessionTree({ isOpen, onClose }: SessionTreeProps) {
-  const [data, setData] = useState<PiTreeResponse | null>(null);
+  const [data, setData] = useState<TreeResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -56,7 +56,7 @@ export function SessionTree({ isOpen, onClose }: SessionTreeProps) {
     if (!isOpen) return;
     setLoading(true);
     setErr(null);
-    fetchPiTree()
+    fetchTree()
       .then(setData)
       .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));

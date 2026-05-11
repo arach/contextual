@@ -96,6 +96,7 @@ export const initialThreads: Thread[] = [
     turn: 47,
     fixedBudget: 35,
     softKeep: 8,
+    backendConfig: { backend: "pi-coding-agent" },
   },
   {
     id: "ops",
@@ -155,6 +156,7 @@ export const initialThreads: Thread[] = [
     turn: 16,
     fixedBudget: 15,
     softKeep: 6,
+    backendConfig: { backend: "pi-coding-agent" },
   },
   {
     id: "backend",
@@ -206,6 +208,7 @@ export const initialThreads: Thread[] = [
     turn: 24,
     fixedBudget: 25,
     softKeep: 6,
+    backendConfig: { backend: "pi-coding-agent" },
   },
   {
     id: "research",
@@ -257,5 +260,6 @@ export const initialThreads: Thread[] = [
     turn: 12,
     fixedBudget: 10,
     softKeep: 6,
+    backendConfig: { backend: "pi-coding-agent" },
   },
 ];

@@ -2,7 +2,7 @@
 // (and easy to test) — every interaction in the UI maps to exactly one action.
 
 import { useCallback, useMemo, useReducer } from "react";
-import type { ContextModule, SoftItem, Thread } from "@/types";
+import type { BackendConfig, ContextModule, LastUsage, SoftItem, Thread } from "@/types";
 import { MODULE_LIBRARY } from "@/data/modules";
 import { initialThreads } from "@/data/threads";
 import { tokFor } from "@/lib/tokens";
@@ -22,7 +22,9 @@ type Action =
   | { type: "pinSoft"; id: string }
   | { type: "unpinFixed"; moduleId: string }
   | { type: "drop"; id: string; zone: "fixed" | "soft" }
-  | { type: "appendSoft"; item: SoftItem; bumpTurn?: boolean };
+  | { type: "appendSoft"; item: SoftItem; bumpTurn?: boolean }
+  | { type: "setBackendConfig"; v: BackendConfig }
+  | { type: "setLastUsage"; v: LastUsage };
 
 const initialState: State = {
   threads: initialThreads,
@@ -114,6 +116,12 @@ function reducer(state: State, action: Action): State {
         turn: action.bumpTurn ? t.turn + 1 : t.turn,
       }));
 
+    case "setBackendConfig":
+      return patchActive(state, { backendConfig: action.v });
+
+    case "setLastUsage":
+      return patchActive(state, { lastUsage: action.v });
+
     default:
       return state;
   }
@@ -136,6 +144,10 @@ export interface ThreadStore {
   sendUserMessage: () => string | null;
   /** Append a model response after async work completes. */
   appendModelReply: (body: string) => void;
+  /** Change which backend the active thread dispatches through. */
+  setBackendConfig: (v: BackendConfig) => void;
+  /** Persist usage telemetry from the most recent dispatch. */
+  setLastUsage: (v: LastUsage) => void;
 }
 
 export function useThreadStore(): ThreadStore {
@@ -155,6 +167,14 @@ export function useThreadStore(): ThreadStore {
   const unpinFixed = useCallback((moduleId: string) => dispatch({ type: "unpinFixed", moduleId }), []);
   const drop = useCallback(
     (id: string, zone: "fixed" | "soft") => dispatch({ type: "drop", id, zone }),
+    [],
+  );
+  const setBackendConfig = useCallback(
+    (v: BackendConfig) => dispatch({ type: "setBackendConfig", v }),
+    [],
+  );
+  const setLastUsage = useCallback(
+    (v: LastUsage) => dispatch({ type: "setLastUsage", v }),
     [],
   );
 
@@ -202,5 +222,7 @@ export function useThreadStore(): ThreadStore {
     drop,
     sendUserMessage,
     appendModelReply,
+    setBackendConfig,
+    setLastUsage,
   };
 }

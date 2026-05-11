@@ -20,7 +20,7 @@ import { useThreadStore } from "@/state/useThreadStore";
 import { useCommands } from "@/state/useCommands";
 import { buildManifest } from "@/lib/derive";
 import { tokFor } from "@/lib/tokens";
-import { dispatchPi, branchPi } from "@/lib/pi";
+import { dispatch as dispatchBackend, branch as branchBackend } from "@/lib/backends/client";
 
 import { ClassificationBand } from "@/components/chrome/ClassificationBand";
 import { CommandPaletteHost } from "@/components/chrome/CommandPaletteHost";
@@ -117,12 +117,20 @@ export function App() {
     try {
       // The plugin materializes Fixed modules into the workspace and pi
       // discovers them from cwd, so the wire payload is just (thread, text).
-      const result = await dispatchPi(threadAtDispatch, text);
+      const result = await dispatchBackend(threadAtDispatch, text);
       store.appendModelReply(result.reply);
+      if (result.usage) {
+        store.setLastUsage({
+          costUsd: result.usage.cost.total,
+          cacheRead: result.usage.cacheRead,
+          input: result.usage.input,
+          output: result.usage.output,
+        });
+      }
       setSyncTick((t) => t + 1);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      store.appendModelReply(`(pi unavailable — ${msg})`);
+      store.appendModelReply(`(backend unavailable — ${msg})`);
     } finally {
       setThinking(false);
     }
@@ -132,14 +140,14 @@ export function App() {
   // from the current branch so the next dispatch on the new branch carries
   // the parent's history.
   const branchAndFork = useCallback(async () => {
-    const fromBranch = store.active.activeBranch;
-    const threadId = store.active.id;
+    const threadAtBranch = store.active;
+    const fromBranch = threadAtBranch.activeBranch;
     store.branch();
     const newBranch = `branch-${store.active.branches.length}`;
     try {
-      await branchPi(threadId, fromBranch, newBranch);
+      await branchBackend(threadAtBranch, fromBranch, newBranch);
     } catch (e) {
-      console.warn("branchPi failed:", e);
+      console.warn("branch backend failed:", e);
     }
   }, [store]);
 
@@ -162,6 +170,8 @@ export function App() {
             threadName={store.active.name}
             activeBranch={store.active.activeBranch}
             threadCount={store.threads.length}
+            backendConfig={store.active.backendConfig}
+            onBackendChange={store.setBackendConfig}
           />
           {mode === "session" ? (
             <>

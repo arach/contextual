@@ -9,6 +9,7 @@ import { FuelBar } from "@/components/rack/FuelBar";
 import { BudgetSlider } from "@/components/rack/BudgetSlider";
 import { RackZone } from "@/components/rack/RackZone";
 import { RackCard } from "@/components/rack/RackCard";
+import { CostChip } from "@/components/rack/CostChip";
 import { WorkspaceBadge } from "@/components/rack/WorkspaceBadge";
 import type { Thread } from "@/types";
 import { fmtTokens, sumTokens } from "@/lib/tokens";
@@ -67,7 +68,11 @@ export function ContextRack({
       onToggleCollapse={onToggleCollapse}
       headerActions={
         <div className="flex items-center gap-2">
-          <WorkspaceBadge threadId={thread.id} syncTick={syncTick} />
+          {thread.backendConfig.backend === "pi-coding-agent" ? (
+            <WorkspaceBadge threadId={thread.id} syncTick={syncTick} />
+          ) : (
+            thread.lastUsage && <CostChip usage={thread.lastUsage} />
+          )}
           <span className="hg-mono text-[10px] tracking-wider uppercase text-[var(--hg-muted)]">
             {fmtTokens(total)} · {thread.name}/{thread.activeBranch}
           </span>

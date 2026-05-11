@@ -64,6 +64,38 @@ export interface ThreadTask {
 
 export type ThreadStatus = "live" | "idle" | "archived";
 
+// ---- Backend configuration (per-thread) ---------------------------------
+
+export type BackendId = "pi-coding-agent" | "pi-ai";
+
+export type ProviderId =
+  | "anthropic"
+  | "openai"
+  | "google"
+  | "google-vertex"
+  | "mistral"
+  | "amazon-bedrock";
+
+/** Auth mode hint; server resolves the actual credential from env or store. */
+export type Auth = { mode: "api-key" } | { mode: "oauth" };
+
+export type BackendConfig =
+  | { backend: "pi-coding-agent" }
+  | { backend: "pi-ai"; provider: ProviderId; model: string; auth: Auth };
+
+/** Subset of pi-ai's Usage struct kept on Thread for the cost chip. */
+export interface LastUsage {
+  costUsd: number;
+  cacheRead: number;
+  input: number;
+  output: number;
+}
+
+/** Pointer a Branch carries when the backend has native session state. */
+export type BackendRef =
+  | { backend: "pi-coding-agent"; sessionPath: string }
+  | { backend: "pi-ai" };
+
 export interface Thread {
   id: string;
   name: string;
@@ -83,6 +115,10 @@ export interface Thread {
   fixedBudget: number;
   /** Number of recent soft turns to keep in-window. */
   softKeep: number;
+  /** Which backend dispatches this thread routes to. */
+  backendConfig: BackendConfig;
+  /** Usage telemetry from the last dispatch (pi-ai backend only). */
+  lastUsage?: LastUsage;
 }
 
 /** Hard cap on the model's context window for this prototype. */
