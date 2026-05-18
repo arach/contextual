@@ -26,21 +26,24 @@ npm install -g @earendil-works/pi-coding-agent
 pi login   # OAuth or API key, your choice
 ```
 
-For the **pi-ai** backend, you'll need an `ANTHROPIC_API_KEY` (or the corresponding key for whichever provider you select). Storage is handled by the `secret` CLI on this machine — never in a `.env` file:
+For the **pi-ai** backend, you have two auth choices:
 
-```bash
-secret set ANTHROPIC_API_KEY     # prompts for the value
-```
+- **Recommended: Claude Pro/Max subscription** — click any Anthropic option in the backend chip; if not signed in, the OAuth flow opens automatically. Credentials persist to `~/.contextual/credentials.json` and refresh on demand.
+- **API key** — set `ANTHROPIC_API_KEY` (or the equivalent for whichever provider you pick). Storage goes through the `secret` CLI so the value never lands in a `.env` file:
+
+  ```bash
+  secret set ANTHROPIC_API_KEY     # prompts for the value
+  ```
+
+  Then run the dev server with the credential injected into the child env:
+
+  ```bash
+  secret run ANTHROPIC_API_KEY -- bun dev
+  ```
 
 ## Run
 
-Start the dev server with the credential injected into the child env:
-
-```bash
-secret run ANTHROPIC_API_KEY -- bun dev
-```
-
-For pi-coding-agent only:
+For OAuth or pi-coding-agent (no API key needed):
 
 ```bash
 bun dev

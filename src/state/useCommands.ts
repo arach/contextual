@@ -10,6 +10,7 @@ export interface ShellActions {
   toggleRight: () => void;
   openDesigner: () => void;
   openSession: () => void;
+  openAnalysis: () => void;
   openTree: () => void;
 }
 
@@ -80,6 +81,11 @@ export function useCommands(store: ThreadStore, shell: ShellActions): CommandOpt
         id: "shell:open-designer",
         label: "Open Designer view",
         action: shell.openDesigner,
+      },
+      {
+        id: "shell:open-analysis",
+        label: "Open Analysis view",
+        action: shell.openAnalysis,
       },
       {
         id: "shell:open-tree",

@@ -44,7 +44,6 @@ export function WorkspaceBadge({ threadId, syncTick = 0 }: WorkspaceBadgeProps) 
         onClick={() => setOpen((o) => !o)}
         className={
           "hg-pill " +
-          (synced ? "accent " : "") +
           "cursor-pointer flex items-center gap-1.5 transition-colors"
         }
         title={workspaceDir || "no workspace yet"}
@@ -52,7 +51,7 @@ export function WorkspaceBadge({ threadId, syncTick = 0 }: WorkspaceBadgeProps) 
         <span
           className={
             "w-[5px] h-[5px] rounded-full " +
-            (synced ? "bg-[var(--hg-accent)] shadow-[0_0_6px_var(--hg-accent)]" : "bg-[var(--hg-muted)]")
+            (synced ? "bg-neutral-500" : "bg-neutral-700")
           }
         />
         {synced ? `pi · ${count} file${count > 1 ? "s" : ""}` : "pi · not synced"}

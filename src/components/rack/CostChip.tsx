@@ -31,7 +31,7 @@ export function CostChip({ usage }: CostChipProps) {
         className="hg-pill cursor-pointer flex items-center gap-1.5 transition-colors"
         title="last dispatch usage"
       >
-        <span className="w-[5px] h-[5px] rounded-full bg-[var(--hg-accent)] shadow-[0_0_6px_var(--hg-accent)]" />
+        <span className="w-[5px] h-[5px] rounded-full bg-neutral-500" />
         {fmtUsd(usage.costUsd)}
         {usage.cacheRead > 0 && (
           <span className="text-[var(--hg-muted)]">· cache {fmtTok(usage.cacheRead)}</span>

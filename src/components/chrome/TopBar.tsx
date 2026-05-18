@@ -1,10 +1,8 @@
-// Wraps Hudson's NavigationBar with the Hangar callsign brand, the mode
-// pill (session/designer), and the shortcut/meta actions.
+// Hudson NavigationBar — Scout-style mode tabs and backend chip.
 import { NavigationBar } from "hudsonkit/chrome";
 import type { AppMode } from "@/App";
 import type { BackendConfig } from "@/types";
 import { BackendChip } from "@/components/chrome/BackendChip";
-import { BrandMark } from "@/components/chrome/BrandMark";
 import { TopBarActions } from "@/components/chrome/TopBarActions";
 import { ModeSwitch } from "@/components/chrome/ModeSwitch";
 
@@ -29,7 +27,7 @@ export function TopBar({
 }: TopBarProps) {
   return (
     <NavigationBar
-      title="CONTEXTUAL"
+      title="Context"
       subtitle={
         mode === "session" ? (
           <span className="hg-mono text-[10px] tracking-wider uppercase text-[var(--hg-muted)]">
@@ -37,15 +35,18 @@ export function TopBar({
             <span className="text-[var(--hg-hairline)] mx-1">·</span>
             {activeBranch}
           </span>
+        ) : mode === "designer" ? (
+          <span className="hg-mono text-[10px] tracking-wider uppercase text-[var(--hg-muted)]">
+            / packages
+          </span>
         ) : (
           <span className="hg-mono text-[10px] tracking-wider uppercase text-[var(--hg-muted)]">
-            / designer
+            / explore
           </span>
         )
       }
       center={
         <div className="flex items-center gap-4">
-          <BrandMark />
           <ModeSwitch mode={mode} onChange={onModeChange} />
           {mode === "session" && (
             <BackendChip value={backendConfig} onChange={onBackendChange} />

@@ -1,11 +1,11 @@
-// Left rail — Hudson's SidePanel populated with the thread list and a
-// per-active footer summarizing load.
+import { useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import { SidePanel } from "hudsonkit/chrome";
+import { HudRail } from "hudsonkit/patterns";
+import type { HudRailItem, HudRailSection } from "hudsonkit/patterns";
 import { Radio } from "lucide-react";
 import type { Thread } from "@/types";
-import { fmtTokens } from "@/lib/tokens";
-import { ThreadItem } from "@/components/threads/ThreadItem";
+import { BranchPills } from "@/components/threads/BranchPills";
 
 interface ThreadsPanelProps {
   threads: Thread[];
@@ -23,7 +23,7 @@ interface ThreadsPanelProps {
 export function ThreadsPanel({
   threads,
   activeId,
-  totalTokens,
+  totalTokens: _totalTokens,
   isCollapsed,
   width,
   onResizeStart,
@@ -32,51 +32,107 @@ export function ThreadsPanel({
   onSelectBranch,
   onBranch,
 }: ThreadsPanelProps) {
-  const active = threads.find((t) => t.id === activeId);
+  const [query, setQuery] = useState("");
+
+  const railSections = useMemo(
+    () => buildRailSections(threads, activeId, query, onSelectBranch, onBranch),
+    [threads, activeId, query, onSelectBranch, onBranch],
+  );
+
   return (
     <SidePanel
       side="left"
-      title="THREADS"
-      icon={<Radio size={12} className="text-[var(--hg-accent)]" />}
+      title="Threads"
+      icon={<Radio size={12} className="text-neutral-500" />}
       width={width}
       onResizeStart={onResizeStart}
       isCollapsed={isCollapsed}
       onToggleCollapse={onToggleCollapse}
-      footer={
-        active && (
-          <div className="px-4 py-3 hg-mono text-[10px] text-[var(--hg-muted)] leading-[1.7] border-t border-[var(--hg-line)] bg-[var(--hg-bg)]">
-            <Row k="active" v={`${active.id}/${active.activeBranch}`} />
-            <Row k="turn" v={String(active.turn)} />
-            <Row k="load" v={fmtTokens(totalTokens)} />
-            <Row k="budget" v="100k" />
-          </div>
-        )
-      }
     >
-      <div className="px-2 pt-2 pb-3">
-        {threads.map((t) => (
-          <ThreadItem
-            key={t.id}
-            thread={t}
-            isActive={t.id === activeId}
-            onSelect={() => onSelect(t.id)}
-            onSelectBranch={onSelectBranch}
-            onBranch={onBranch}
-          />
-        ))}
-        <button className="w-full mt-2 px-3 py-2 border border-dashed border-[var(--hg-hairline)] rounded-[2px] hg-mono text-[10.5px] tracking-wider uppercase text-[var(--hg-muted)] hover:text-[var(--hg-accent)] hover:border-[var(--hg-accent)]">
-          + new thread
-        </button>
-      </div>
+      <HudRail
+        sections={railSections}
+        selectedId={activeId}
+        onSelect={(item) => onSelect(item.id)}
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Filter…",
+        }}
+        actions={
+          <button className="hg-btn ghost text-[11px]" type="button">
+            New
+          </button>
+        }
+        density="compact"
+        className="h-full border-r-0 bg-transparent"
+        empty="No threads match."
+      />
     </SidePanel>
   );
 }
 
-function Row({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex justify-between">
-      <span>{k}</span>
-      <b className="text-[var(--hg-ink)] font-medium">{v}</b>
-    </div>
-  );
+function buildRailSections(
+  threads: Thread[],
+  activeId: string,
+  query: string,
+  onSelectBranch: (b: string) => void,
+  onBranch: () => void,
+): HudRailSection[] {
+  const q = query.trim().toLowerCase();
+  const visible = q
+    ? threads.filter((t) =>
+        [t.id, t.name, t.activeBranch, t.status, ...t.branches]
+          .join(" ")
+          .toLowerCase()
+          .includes(q),
+      )
+    : threads;
+
+  const toItem = (thread: Thread): HudRailItem => {
+    const isActive = thread.id === activeId;
+    return {
+      id: thread.id,
+      title: thread.name,
+      subtitle: isActive ? (
+        <BranchPills
+          branches={thread.branches}
+          activeBranch={thread.activeBranch}
+          onSelect={onSelectBranch}
+          onBranch={onBranch}
+        />
+      ) : (
+        <span className="text-[11px] text-neutral-600">{thread.lastActive}</span>
+      ),
+      avatar: (
+        <span
+          className={
+            "mt-1.5 block h-1.5 w-1.5 rounded-full " +
+            (thread.status === "live" ? "bg-[var(--ctx-accent)]" : "bg-neutral-700")
+          }
+        />
+      ),
+      status: thread.status,
+      statusTone:
+        thread.status === "live" ? "accent" : thread.status === "idle" ? "neutral" : "warning",
+    };
+  };
+
+  const open = visible.filter((t) => t.status !== "archived").map(toItem);
+  const archived = visible.filter((t) => t.status === "archived").map(toItem);
+
+  return [
+    {
+      id: "open-contexts",
+      title: "Open",
+      count: open.length,
+      items: open,
+    },
+    {
+      id: "archived-contexts",
+      title: "Archive",
+      count: archived.length,
+      items: archived,
+      empty: "No archived threads.",
+    },
+  ];
 }

@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.74.0",
-    "hudsonkit": "0.2.0",
+    "hudsonkit": "file:../hudson/packages/web/hudsonkit",
     "lucide-react": "^0.574.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

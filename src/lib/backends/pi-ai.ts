@@ -20,6 +20,7 @@ import type {
   DispatchRequest,
   DispatchResult,
 } from "./types";
+import { getOAuthApiKey } from "./oauth";
 
 function extractText(content: AssistantMessage["content"]): string {
   return content
@@ -118,11 +119,17 @@ async function dispatch(req: DispatchRequest): Promise<DispatchResult> {
     apiKey = getEnvApiKey(provider);
     if (!apiKey) {
       throw new Error(
-        `No API key found for ${provider}. Run the dev server with \`secret run <KEY> -- bun dev\`.`,
+        `No API key found for ${provider}. Run the dev server with \`secret run <KEY> -- bun dev\`, or switch the backend chip to an OAuth option.`,
       );
     }
   } else {
-    throw new Error("OAuth mode not yet implemented for pi-ai backend (v1.1).");
+    const oauthKey = await getOAuthApiKey(provider);
+    if (!oauthKey) {
+      throw new Error(
+        `Not signed in to ${provider}. Click "sign in" on the backend chip to connect your Pro/Max subscription.`,
+      );
+    }
+    apiKey = oauthKey;
   }
 
   const model = getModel(provider as never, modelId as never);

@@ -115,3 +115,26 @@ export async function fetchWorkspace(threadId: string): Promise<WorkspaceRespons
   if (!res.ok) throw new Error(`workspace fetch failed: ${res.status}`);
   return (await res.json()) as WorkspaceResponse;
 }
+
+// ---- OAuth (pi-ai providers with Pro/Max subscriptions) -----------------
+
+export async function fetchOAuthStatus(): Promise<Record<string, boolean>> {
+  const res = await fetch("/api/oauth/status");
+  if (!res.ok) throw new Error(`oauth status failed: ${res.status}`);
+  return (await res.json()) as Record<string, boolean>;
+}
+
+/** Kick off the OAuth flow. The server opens the user's browser; this
+ *  promise resolves once the full login round-trip completes (could take
+ *  a while — user has to interactively authenticate). */
+export async function loginOAuth(provider: string): Promise<void> {
+  const res = await fetch(`/api/oauth/login?provider=${encodeURIComponent(provider)}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({ error: res.statusText }))) as {
+      error?: string;
+    };
+    throw new Error(data.error ?? `oauth login failed: ${res.status}`);
+  }
+}
