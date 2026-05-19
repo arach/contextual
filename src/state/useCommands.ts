@@ -6,8 +6,9 @@ import type { CommandOption } from "hudsonkit/overlays";
 import type { ThreadStore } from "@/state/useThreadStore";
 
 export interface ShellActions {
-  toggleLeft: () => void;
-  toggleRight: () => void;
+  /** Omit when Hudson AppShell owns panel collapse (avoids duplicate palette ids). */
+  toggleLeft?: () => void;
+  toggleRight?: () => void;
   openDesigner: () => void;
   openSession: () => void;
   openAnalysis: () => void;
@@ -58,20 +59,24 @@ export function useCommands(store: ThreadStore, shell: ShellActions): CommandOpt
       });
     }
 
-    // --- shell ---
-    cmds.push(
-      {
+    // --- shell (panel toggles only when not provided by Hudson AppShell) ---
+    if (shell.toggleLeft) {
+      cmds.push({
         id: "shell:toggle-left",
         label: "Toggle threads panel",
         shortcut: "⌘[",
         action: shell.toggleLeft,
-      },
-      {
+      });
+    }
+    if (shell.toggleRight) {
+      cmds.push({
         id: "shell:toggle-right",
         label: "Toggle context rack",
         shortcut: "⌘]",
         action: shell.toggleRight,
-      },
+      });
+    }
+    cmds.push(
       {
         id: "shell:open-session",
         label: "Open Session view",
