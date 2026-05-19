@@ -118,8 +118,12 @@ export interface ContextAtom {
   rawTokenCount: number;
   label: string;
   summary: string;
+  /** Full verbatim text from the transcript record — not a Contextual preview. */
   excerpt: string;
+  /** True only when the source harness truncated this record (never Contextual UI clipping). */
   excerptTruncated: boolean;
+  /** Harness-reported original size when the source truncated tool output. */
+  sourceTokenCount?: number | null;
   pinned: boolean;
   sourceType: "message" | "tool-call" | "tool-output" | "reasoning" | "media" | "missing";
   role: string | null;
@@ -265,11 +269,13 @@ export interface RecipeDraft {
 
 export interface SessionAnalysis {
   id: string;
-  project: "Scout" | "Hudson" | "Talkie";
+  project: "Scout" | "Hudson" | "Talkie" | "Contextual";
   title: string;
   path: string;
   source: "codex" | "claude";
   timeLabel: string;
+  /** ISO timestamp from transcript file mtime — when you last touched this session. */
+  observedAt: string;
   summary: string;
   contextTokens: number;
   engineBudget: number;
@@ -290,11 +296,45 @@ export interface SessionAnalysis {
     lesson: string;
     caveat: string;
   };
+  /** Recently active sessions — still fresh in working memory. */
+  familiarity?: {
+    rank: number;
+    label: string;
+    reason: string;
+  };
 }
 
 export interface SessionAnalysisResponse {
   generatedAt: string;
   thresholds: number[];
+  sessions: SessionAnalysis[];
+}
+
+/** Lightweight index row for search before pulling full analysis. */
+export interface SessionCatalogEntry {
+  id: string;
+  path: string;
+  project: SessionAnalysis["project"];
+  source: SessionAnalysis["source"];
+  title: string;
+  summary: string;
+  observedAt: string;
+  /** Already in the default analyzed corpus (GET /api/session-analysis). */
+  inCorpus: boolean;
+}
+
+export interface SessionCatalogResponse {
+  generatedAt: string;
+  total: number;
+  entries: SessionCatalogEntry[];
+}
+
+export interface SessionPullRequest {
+  path?: string;
+  paths?: string[];
+}
+
+export interface SessionPullResponse {
   sessions: SessionAnalysis[];
 }
 

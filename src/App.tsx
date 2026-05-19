@@ -4,7 +4,7 @@
 // All thread state lives in useThreadStore; the LLM call is a no-op stub
 // here since this prototype doesn't ship with a real backend.
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Frame } from "hudsonkit/chrome";
 import { usePersistentState } from "hudsonkit";
@@ -40,7 +40,7 @@ const RIGHT_MIN = 320;
 const RIGHT_MAX = 720;
 const PANEL_W_COLLAPSED = 60;
 
-export type AppMode = "session" | "designer" | "analysis";
+export type AppMode = import("@/contextualApp/modes").AppMode;
 
 export function App() {
   const store = useThreadStore();
@@ -101,6 +101,14 @@ export function App() {
   // slot) and DesignerWorkbench (in the center column) see the same package.
   const designer = useDesignerState();
   const analysis = useSessionAnalysisState();
+  const lastAnalysisSessionRef = useRef("");
+
+  useEffect(() => {
+    if (mode !== "analysis" || !analysis.activeId) return;
+    if (analysis.activeId === lastAnalysisSessionRef.current) return;
+    lastAnalysisSessionRef.current = analysis.activeId;
+    setLeftCollapsed(true);
+  }, [mode, analysis.activeId, setLeftCollapsed]);
 
   const manifest = useMemo(() => buildManifest(store.active), [store.active]);
   const composerTokens = tokFor(store.active.composer);
@@ -238,7 +246,7 @@ export function App() {
           live SidePanel widths so the column reflows when panels collapse or
           when the resizer is dragged. */}
       <div
-        className="absolute inset-0 flex flex-col"
+        className="absolute inset-0 flex min-h-0 flex-col"
         style={{
           top: 48,
           bottom: 28,
@@ -259,7 +267,11 @@ export function App() {
         ) : mode === "designer" ? (
           <DesignerWorkbench state={designer} />
         ) : (
-          <SessionAnalysisWorkbench state={analysis} />
+          <SessionAnalysisWorkbench
+            state={analysis}
+            sessionsPanelCollapsed={leftCollapsed}
+            onToggleSessionsPanel={() => setLeftCollapsed((c) => !c)}
+          />
         )}
       </div>
     </Frame>

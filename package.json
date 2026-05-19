@@ -5,20 +5,26 @@
   "type": "module",
   "description": "Contextual — context engineering as a first-class UX surface. Hangar direction on HudsonKit chrome.",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "dev": "node scripts/ensure-hudsonkit-styles.mjs && next dev --port 5180",
+    "dev:vite": "node scripts/ensure-hudsonkit-styles.mjs && vite",
+    "build": "next build",
+    "build:vite": "node scripts/ensure-hudsonkit-styles.mjs && tsc -b && vite build",
+    "start": "next start --port 5180",
+    "typecheck": "tsc --noEmit",
+    "typecheck:vite": "tsc -b --noEmit"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.74.0",
     "hudsonkit": "file:../hudson/packages/web/hudsonkit",
     "lucide-react": "^0.574.0",
+    "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
     "@tailwindcss/vite": "^4.3.0",
+    "@types/node": "^20",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",

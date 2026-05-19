@@ -22,6 +22,7 @@ import type {
   DispatchResult,
 } from "./types";
 import type { ContextModule } from "../../types";
+import { pickBestUserMessage, titleFromUserMessage } from "../sessionLabel";
 
 const ROOT = path.join(os.homedir(), ".contextual");
 const SESSION_DIR = path.join(ROOT, "sessions");
@@ -319,7 +320,7 @@ async function summarizeSession(p: string): Promise<SessionSummary | null> {
     let messageCount = 0;
     let userCount = 0;
     let assistantCount = 0;
-    let firstUserText: string | undefined;
+    const userTexts: string[] = [];
     let lastTimestamp: string = header.timestamp;
     let totalTokens = 0;
     let totalCost = 0;
@@ -333,12 +334,13 @@ async function summarizeSession(p: string): Promise<SessionSummary | null> {
         const m = node.message;
         if (m?.role === "user") {
           userCount++;
-          if (!firstUserText) {
-            const first = (m.content || []).find(
-              (c: { type?: string }) => c.type === "text",
-            );
-            if (first?.text) firstUserText = first.text.slice(0, 80);
-          }
+          const parts = (m.content || []) as Array<{ type?: string; text?: string }>;
+          const text = parts
+            .filter((c) => c.type === "text" && c.text)
+            .map((c) => c.text!)
+            .join("\n")
+            .trim();
+          if (text) userTexts.push(text);
         } else if (m?.role === "assistant") {
           assistantCount++;
           const u = m.usage;
@@ -349,6 +351,9 @@ async function summarizeSession(p: string): Promise<SessionSummary | null> {
         // skip malformed lines
       }
     }
+
+    const bestUser = pickBestUserMessage(userTexts);
+    const firstUserText = bestUser ? titleFromUserMessage(bestUser) : undefined;
 
     return {
       path: p,

@@ -20,6 +20,47 @@ interface ThreadsPanelProps {
   onBranch: () => void;
 }
 
+export function ThreadsPanelContent({
+  threads,
+  activeId,
+  onSelect,
+  onSelectBranch,
+  onBranch,
+}: {
+  threads: Thread[];
+  activeId: string;
+  onSelect: (id: string) => void;
+  onSelectBranch: (b: string) => void;
+  onBranch: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const railSections = useMemo(
+    () => buildRailSections(threads, activeId, query, onSelectBranch, onBranch),
+    [threads, activeId, query, onSelectBranch, onBranch],
+  );
+
+  return (
+    <HudRail
+      sections={railSections}
+      selectedId={activeId}
+      onSelect={(item) => onSelect(item.id)}
+      search={{
+        value: query,
+        onChange: setQuery,
+        placeholder: "Filter…",
+      }}
+      actions={
+        <button className="hg-btn ghost text-[11px]" type="button">
+          New
+        </button>
+      }
+      density="compact"
+      className="h-full border-r-0 bg-transparent"
+      empty="No threads match."
+    />
+  );
+}
+
 export function ThreadsPanel({
   threads,
   activeId,
@@ -32,13 +73,6 @@ export function ThreadsPanel({
   onSelectBranch,
   onBranch,
 }: ThreadsPanelProps) {
-  const [query, setQuery] = useState("");
-
-  const railSections = useMemo(
-    () => buildRailSections(threads, activeId, query, onSelectBranch, onBranch),
-    [threads, activeId, query, onSelectBranch, onBranch],
-  );
-
   return (
     <SidePanel
       side="left"
@@ -49,23 +83,12 @@ export function ThreadsPanel({
       isCollapsed={isCollapsed}
       onToggleCollapse={onToggleCollapse}
     >
-      <HudRail
-        sections={railSections}
-        selectedId={activeId}
-        onSelect={(item) => onSelect(item.id)}
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Filter…",
-        }}
-        actions={
-          <button className="hg-btn ghost text-[11px]" type="button">
-            New
-          </button>
-        }
-        density="compact"
-        className="h-full border-r-0 bg-transparent"
-        empty="No threads match."
+      <ThreadsPanelContent
+        threads={threads}
+        activeId={activeId}
+        onSelect={onSelect}
+        onSelectBranch={onSelectBranch}
+        onBranch={onBranch}
       />
     </SidePanel>
   );

@@ -1,6 +1,6 @@
 // Hudson NavigationBar — Scout-style mode tabs and backend chip.
 import { NavigationBar } from "hudsonkit/chrome";
-import type { AppMode } from "@/App";
+import type { AppMode } from "@/contextualApp/modes";
 import type { BackendConfig } from "@/types";
 import { BackendChip } from "@/components/chrome/BackendChip";
 import { TopBarActions } from "@/components/chrome/TopBarActions";

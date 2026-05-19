@@ -1,12 +1,13 @@
+"use client";
+
 import type { AppMode } from "@/contextualApp/modes";
 import { APP_MODES } from "@/contextualApp/modes";
 
 interface ModeSwitchProps {
   mode: AppMode;
-  onChange: (m: AppMode) => void;
+  onChange: (mode: AppMode) => void;
 }
 
-/** @deprecated Use `@/contextualApp/ModeSwitch` */
 export function ModeSwitch({ mode, onChange }: ModeSwitchProps) {
   return (
     <div className="ctx-nav-tabs" role="tablist" aria-label="Contextual mode">

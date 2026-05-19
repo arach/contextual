@@ -25,19 +25,23 @@ interface ContextRackProps {
   onDrop: (id: string, zone: "fixed" | "soft") => void;
 }
 
-export function ContextRack({
+export function ContextRackContent({
   thread,
-  isCollapsed,
-  width,
   syncTick,
-  onResizeStart,
-  onToggleCollapse,
   onSetFixedBudget,
   onSetSoftKeep,
   onPin,
   onUnpin,
   onDrop,
-}: ContextRackProps) {
+}: {
+  thread: Thread;
+  syncTick: number;
+  onSetFixedBudget: (v: number) => void;
+  onSetSoftKeep: (v: number) => void;
+  onPin: (softId: string) => void;
+  onUnpin: (moduleId: string) => void;
+  onDrop: (id: string, zone: "fixed" | "soft") => void;
+}) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [openSections, setOpenSections] = useState({
     task: true,
@@ -59,38 +63,27 @@ export function ContextRack({
   const softBudgetTokens = (100 - thread.fixedBudget) * 1000;
 
   return (
-    <SidePanel
-      side="right"
-      title="Context"
-      width={width}
-      onResizeStart={onResizeStart}
-      isCollapsed={isCollapsed}
-      onToggleCollapse={onToggleCollapse}
-      headerActions={
-        <div className="flex items-center gap-2">
-          {thread.backendConfig.backend === "pi-coding-agent" ? (
-            <WorkspaceBadge threadId={thread.id} syncTick={syncTick} />
-          ) : (
-            thread.lastUsage && <CostChip usage={thread.lastUsage} />
-          )}
-        </div>
-      }
-    >
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center justify-end gap-2 border-b border-[var(--hg-line)] px-2 py-1.5">
+        {thread.backendConfig.backend === "pi-coding-agent" ? (
+          <WorkspaceBadge threadId={thread.id} syncTick={syncTick} />
+        ) : (
+          thread.lastUsage && <CostChip usage={thread.lastUsage} />
+        )}
+      </div>
       <RackBudgetStrip
         fixedTokens={fixedTokens}
         softTokens={softTokens}
         fixedBudgetTokens={fixedBudgetTokens}
         softBudgetTokens={softBudgetTokens}
       />
-
       <RackWindowSettings
         fixedBudget={thread.fixedBudget}
         softKeep={thread.softKeep}
         onSetFixedBudget={onSetFixedBudget}
         onSetSoftKeep={onSetSoftKeep}
       />
-
-      <div className="px-2 pt-1 pb-4 overflow-auto">
+      <div className="flex-1 overflow-auto px-2 pb-4 pt-1">
         {thread.task && (
           <RackSection
             title="Task"
@@ -153,6 +146,50 @@ export function ContextRack({
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+export function ContextRack({
+  thread,
+  isCollapsed,
+  width,
+  syncTick,
+  onResizeStart,
+  onToggleCollapse,
+  onSetFixedBudget,
+  onSetSoftKeep,
+  onPin,
+  onUnpin,
+  onDrop,
+}: ContextRackProps) {
+  return (
+    <SidePanel
+      side="right"
+      title="Context"
+      width={width}
+      onResizeStart={onResizeStart}
+      isCollapsed={isCollapsed}
+      onToggleCollapse={onToggleCollapse}
+      headerActions={
+        <div className="flex items-center gap-2">
+          {thread.backendConfig.backend === "pi-coding-agent" ? (
+            <WorkspaceBadge threadId={thread.id} syncTick={syncTick} />
+          ) : (
+            thread.lastUsage && <CostChip usage={thread.lastUsage} />
+          )}
+        </div>
+      }
+    >
+      <ContextRackContent
+        thread={thread}
+        syncTick={syncTick}
+        onSetFixedBudget={onSetFixedBudget}
+        onSetSoftKeep={onSetSoftKeep}
+        onPin={onPin}
+        onUnpin={onUnpin}
+        onDrop={onDrop}
+      />
     </SidePanel>
   );
 }

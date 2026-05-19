@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import { SidePanel } from "hudsonkit/chrome";
-import { BarChart3, GitBranch, ListTree, PieChart, Send, Terminal } from "lucide-react";
+import { BarChart3, GitBranch, Layers, ListTree, Pin, PinOff, PieChart, Search, Send, Terminal } from "lucide-react";
 
 import {
   ANALYSIS_THRESHOLDS,
@@ -19,16 +19,47 @@ import {
   type RecipeSlot,
   type SessionAnalysis,
   type SessionAnalysisResponse,
+  type SessionCatalogEntry,
   type ThresholdSnapshot,
 } from "@/lib/sessionAnalysis";
-import { askSessionAnalysis, fetchSessionAnalysis } from "@/lib/sessionAnalysisClient";
+import {
+  askSessionAnalysis,
+  fetchSessionAnalysis,
+  fetchSessionCatalog,
+  pullSessionAnalysis,
+} from "@/lib/sessionAnalysisClient";
+import {
+  formatObservedRelative,
+  pickDefaultExploreSessionId,
+  recentFamiliarSessions,
+} from "@/lib/sessionExplore";
+import {
+  mergeExploreSessions,
+  pinPath,
+  readPinnedPaths,
+  sessionsForPinnedPaths,
+  unpinPath,
+  writePinnedPaths,
+} from "@/lib/sessionExploreNav";
+import { sessionNavDetail, sessionIdSuffix, sessionNavMeta } from "@/lib/sessionNavLabel";
+import { atomsInWindowOrder, splitWindowSections } from "@/lib/sessionWindow";
+import { ContextViewer } from "@/components/analysis/ContextViewer";
+import {
+  buildContextTree,
+  defaultContextNodeId,
+  findContextNode,
+} from "@/lib/contextTree";
 
 interface AnalysisState {
   data: SessionAnalysisResponse | null;
+  sessions: SessionAnalysis[];
   loading: boolean;
   error: string | null;
   activeId: string;
   setActiveId: (id: string) => void;
+  pinnedPaths: string[];
+  pinByPath: (path: string) => Promise<void>;
+  unpinByPath: (path: string) => void;
   threshold: number;
   setThreshold: (threshold: number) => void;
   selectedBucket: ContextBucketId;
@@ -39,6 +70,8 @@ interface AnalysisState {
   toggleBlock: (id: string) => void;
   blockDrafts: Record<string, string>;
   setBlockDraft: (id: string, body: string) => void;
+  selectedContextNodeId: string;
+  setSelectedContextNodeId: (id: string) => void;
   active: SessionAnalysis | null;
   activeSnapshot: ThresholdSnapshot | null;
   selectedInsight: BucketInsight | null;
@@ -46,6 +79,8 @@ interface AnalysisState {
 
 export function useSessionAnalysisState(): AnalysisState {
   const [data, setData] = useState<SessionAnalysisResponse | null>(null);
+  const [pulledSessions, setPulledSessions] = useState<SessionAnalysis[]>([]);
+  const [pinnedPaths, setPinnedPaths] = useState(readPinnedPaths);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState("");
@@ -54,6 +89,12 @@ export function useSessionAnalysisState(): AnalysisState {
   const [questionId, setQuestionId] = useState<AnalysisQuestionId>("shape");
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
   const [blockDrafts, setBlockDrafts] = useState<Record<string, string>>({});
+  const [selectedContextNodeId, setSelectedContextNodeId] = useState("");
+
+  const sessions = useMemo(
+    () => mergeExploreSessions(data?.sessions ?? [], pulledSessions),
+    [data?.sessions, pulledSessions],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -63,14 +104,7 @@ export function useSessionAnalysisState(): AnalysisState {
         if (cancelled) return;
         setData(next);
         setError(null);
-        setActiveId(
-          (current) =>
-            current ||
-            next.sessions.find((session) => session.goodContext?.rank === 1)?.id ||
-            next.sessions.find((session) => session.goodContext)?.id ||
-            next.sessions[0]?.id ||
-            "",
-        );
+        setActiveId((current) => current || pickDefaultExploreSessionId(next.sessions));
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -84,9 +118,55 @@ export function useSessionAnalysisState(): AnalysisState {
     };
   }, []);
 
+  useEffect(() => {
+    if (!data || !pinnedPaths.length) return;
+    const corpusPaths = new Set(data.sessions.map((session) => session.path));
+    const missing = pinnedPaths.filter((path) => !corpusPaths.has(path));
+    if (!missing.length) return;
+
+    let cancelled = false;
+    pullSessionAnalysis({ paths: missing })
+      .then((response) => {
+        if (cancelled || !response.sessions.length) return;
+        setPulledSessions((current) => mergeExploreSessions(current, response.sessions));
+      })
+      .catch(() => {
+        // pinned paths may be stale; keep nav entry until user removes
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [data, pinnedPaths]);
+
+  const pinByPath = useCallback(
+    async (path: string) => {
+      const nextPinned = pinPath(pinnedPaths, path);
+      setPinnedPaths(nextPinned);
+      writePinnedPaths(nextPinned);
+
+      const known = sessions.find((session) => session.path === path);
+      if (known) {
+        setActiveId(known.id);
+        return;
+      }
+
+      const response = await pullSessionAnalysis({ path });
+      if (!response.sessions.length) return;
+      setPulledSessions((current) => mergeExploreSessions(current, response.sessions));
+      setActiveId(response.sessions[0]!.id);
+    },
+    [pinnedPaths, sessions],
+  );
+
+  const unpinByPath = useCallback((path: string) => {
+    const nextPinned = unpinPath(pinnedPaths, path);
+    setPinnedPaths(nextPinned);
+    writePinnedPaths(nextPinned);
+  }, [pinnedPaths]);
+
   const active = useMemo(
-    () => data?.sessions.find((session) => session.id === activeId) ?? data?.sessions[0] ?? null,
-    [activeId, data],
+    () => sessions.find((session) => session.id === activeId) ?? sessions[0] ?? null,
+    [activeId, sessions],
   );
 
   const activeSnapshot = useMemo(() => {
@@ -101,6 +181,22 @@ export function useSessionAnalysisState(): AnalysisState {
   const selectedInsight = useMemo(
     () => active?.bucketInsights.find((insight) => insight.bucket === selectedBucket) ?? null,
     [active, selectedBucket],
+  );
+
+  useEffect(() => {
+    if (!active || !activeSnapshot) return;
+    const tree = buildContextTree(active, activeSnapshot);
+    setSelectedContextNodeId(defaultContextNodeId(tree));
+  }, [active?.id, activeSnapshot?.threshold]);
+
+  const setSelectedContextNode = useCallback(
+    (id: string) => {
+      setSelectedContextNodeId(id);
+      if (!active || !activeSnapshot) return;
+      const node = findContextNode(buildContextTree(active, activeSnapshot), id);
+      if (node?.bucket) setSelectedBucket(node.bucket);
+    },
+    [active, activeSnapshot],
   );
 
   useEffect(() => {
@@ -125,10 +221,14 @@ export function useSessionAnalysisState(): AnalysisState {
 
   return {
     data,
+    sessions,
     loading,
     error,
     activeId: active?.id ?? activeId,
     setActiveId,
+    pinnedPaths,
+    pinByPath,
+    unpinByPath,
     threshold,
     setThreshold,
     selectedBucket,
@@ -139,6 +239,8 @@ export function useSessionAnalysisState(): AnalysisState {
     toggleBlock,
     blockDrafts,
     setBlockDraft,
+    selectedContextNodeId,
+    setSelectedContextNodeId: setSelectedContextNode,
     active,
     activeSnapshot,
     selectedInsight,
@@ -197,62 +299,279 @@ export function AnalysisChrome({
   );
 }
 
+export type ExploreAnalysisState = AnalysisState;
+
+export function ExploreSessionList({ state }: { state: AnalysisState }) {
+  return <SessionList state={state} />;
+}
+
+export function ExploreAllocationInspector({ state }: { state: AnalysisState }) {
+  return <AllocationInspector state={state} />;
+}
+
 function SessionList({ state }: { state: AnalysisState }) {
   if (state.loading) return <PanelEmpty label="loading session corpus" />;
   if (state.error) return <PanelEmpty label={state.error} tone="warn" />;
-  if (!state.data?.sessions.length) return <PanelEmpty label="no sessions found" />;
+  if (!state.sessions.length) return <PanelEmpty label="no sessions found" />;
 
-  const groups = ["Scout", "Hudson", "Talkie"] as const;
+  const NAV_LIMIT = 28;
+  const pinned = sessionsForPinnedPaths(state.sessions, state.pinnedPaths);
+  const pinnedPaths = new Set(state.pinnedPaths);
+  const rest = state.sessions
+    .filter((session) => !pinnedPaths.has(session.path))
+    .sort((a, b) => Date.parse(b.observedAt) - Date.parse(a.observedAt));
+  const visible = rest.slice(0, NAV_LIMIT);
+  const hiddenCount = rest.length - visible.length;
+
   return (
     <div className="px-3 py-3 overflow-auto">
-      {groups.map((project) => {
-        const sessions = state.data!.sessions.filter((session) => session.project === project);
-        if (!sessions.length) return null;
-        return (
-          <section key={project} className="mb-4">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="hg-section-label">{project}</span>
-              <span className="hg-pill">{sessions.length}</span>
-            </div>
-            <div className="space-y-2">
-              {sessions.map((session) => (
-                <button
-                  key={session.id}
-                  type="button"
-                  onClick={() => state.setActiveId(session.id)}
-                  className={
-                    "w-full text-left rounded-[2px] border px-3 py-2.5 transition-colors " +
-                    (state.activeId === session.id
-                      ? "border-[var(--hg-accent)] bg-[var(--hg-accent-tint)]"
-                      : "border-[var(--hg-line)] bg-[var(--hg-surface)] hover:border-[var(--hg-hairline)]")
-                  }
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="hg-mono text-[10px] uppercase tracking-wider text-[var(--hg-ink)] truncate">
-                      {session.title}
-                    </span>
-                    <span className="ml-auto hg-mono text-[9px] text-[var(--hg-muted)]">
-                      {formatAnalysisTokens(session.contextTokens)}
-                    </span>
+      <SessionSearchPanel state={state} />
+      {pinned.length > 0 && (
+        <section className="mb-5">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="hg-section-label">Pinned</span>
+            <span className="hg-pill accent">{pinned.length}</span>
+          </div>
+          <div className="space-y-1.5">
+            {pinned.map((session) => (
+              <SessionListCard
+                key={session.id}
+                session={session}
+                isActive={state.activeId === session.id}
+                onSelect={() => state.setActiveId(session.id)}
+                onUnpin={() => state.unpinByPath(session.path)}
+                showPin
+              />
+            ))}
+          </div>
+        </section>
+      )}
+      {visible.length > 0 && (
+        <section className="mb-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="hg-section-label">Sessions</span>
+            <span className="hg-pill">{rest.length}</span>
+          </div>
+          <div className="space-y-1.5">
+            {visible.map((session) => (
+              <SessionListCard
+                key={session.id}
+                session={session}
+                isActive={state.activeId === session.id}
+                onSelect={() => state.setActiveId(session.id)}
+                isPinned={state.pinnedPaths.includes(session.path)}
+                onPin={() => void state.pinByPath(session.path)}
+                onUnpin={() => state.unpinByPath(session.path)}
+              />
+            ))}
+          </div>
+          {hiddenCount > 0 && (
+            <p className="mt-2 px-1 text-[10px] leading-snug text-[var(--hg-muted)]">
+              {hiddenCount} older — search or pin to pull them in.
+            </p>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+function SessionSearchPanel({ state }: { state: AnalysisState }) {
+  const [query, setQuery] = useState("");
+  const [project, setProject] = useState<SessionAnalysis["project"] | "all">("all");
+  const [results, setResults] = useState<SessionCatalogEntry[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [pullingPath, setPullingPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setResults([]);
+      setSearchError(null);
+      setSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      fetchSessionCatalog({
+        q: trimmed,
+        project: project === "all" ? undefined : project,
+        limit: 24,
+      })
+        .then((response) => {
+          if (cancelled) return;
+          setResults(response.entries);
+          setSearchError(null);
+        })
+        .catch((e: unknown) => {
+          if (cancelled) return;
+          setSearchError(e instanceof Error ? e.message : String(e));
+          setResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 280);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query, project]);
+
+  const handleAdd = async (entry: SessionCatalogEntry) => {
+    setPullingPath(entry.path);
+    try {
+      await state.pinByPath(entry.path);
+    } finally {
+      setPullingPath(null);
+    }
+  };
+
+  return (
+    <section className="mb-5">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="hg-section-label">Find session</span>
+        {searching && <span className="hg-mono text-[9px] text-[var(--hg-muted)]">searching</span>}
+      </div>
+      <div className="relative mb-2">
+        <Search
+          size={12}
+          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--hg-muted)]"
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="title, project, path…"
+          className="w-full rounded-[2px] border border-[var(--hg-line)] bg-[var(--hg-bg-tint)] py-2 pl-8 pr-2 text-[12px] text-[var(--hg-ink)] placeholder:text-[var(--hg-muted)] focus:border-[var(--hg-accent)] focus:outline-none"
+        />
+      </div>
+      <div className="mb-2 flex flex-wrap gap-1">
+        {(["all", "Contextual", "Scout", "Hudson", "Talkie"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setProject(value)}
+            className={
+              "hg-mono rounded-[2px] border px-2 py-1 text-[9px] uppercase tracking-wider " +
+              (project === value
+                ? "border-[var(--hg-accent)] bg-[var(--hg-accent)] text-[var(--hg-bg)]"
+                : "border-[var(--hg-line)] bg-[var(--hg-surface)] text-[var(--hg-muted)] hover:text-[var(--hg-ink)]")
+            }
+          >
+            {value}
+          </button>
+        ))}
+      </div>
+      {searchError && (
+        <p className="mb-2 text-[11px] text-[var(--hg-warn)]">{searchError}</p>
+      )}
+      {query.trim() && !searching && !results.length && !searchError && (
+        <p className="text-[11px] text-[var(--hg-muted)]">No matches — try another term or project.</p>
+      )}
+      {results.length > 0 && (
+        <div className="max-h-[220px] space-y-1.5 overflow-auto rounded-[2px] border border-[var(--hg-line)] bg-[var(--hg-surface)] p-1.5">
+          {results.map((entry) => {
+            const pinned = state.pinnedPaths.includes(entry.path);
+            const inNav = state.sessions.some((session) => session.path === entry.path);
+            return (
+              <div
+                key={entry.path}
+                className="flex items-start gap-2 rounded-[2px] border border-transparent px-2 py-1.5 hover:border-[var(--hg-hairline)] hover:bg-[var(--hg-bg-tint)]"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)]">
+                    {entry.project} · …{sessionIdSuffix(entry.id)} · {formatObservedRelative(entry.observedAt)}
                   </div>
-                  {session.goodContext && (
-                    <div className="mt-1 flex items-center gap-1.5">
-                      <span className="hg-pill accent">good context</span>
-                      <span className="hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)] truncate">
-                        {session.goodContext.label}
-                      </span>
+                  <div className="mt-0.5 text-[12px] leading-snug text-[var(--hg-ink)] line-clamp-2">
+                    {sessionNavDetail({ title: entry.title, summary: entry.summary })}
+                  </div>
+                  {(entry.inCorpus || inNav) && (
+                    <div className="mt-1 hg-mono text-[9px] text-[var(--hg-muted)]">
+                      {entry.inCorpus ? "in corpus" : "loaded"}
                     </div>
                   )}
-                  <div className="mt-1 hg-mono text-[9px] text-[var(--hg-muted)] truncate">
-                    {session.id}
-                  </div>
-                  <MiniBudgetBar used={session.contextTokens} budget={session.engineBudget} />
+                </div>
+                <button
+                  type="button"
+                  disabled={pinned || pullingPath === entry.path}
+                  onClick={() => void handleAdd(entry)}
+                  className={
+                    "shrink-0 rounded-[2px] border px-2 py-1 hg-mono text-[9px] uppercase tracking-wider " +
+                    (pinned
+                      ? "border-[var(--hg-line)] text-[var(--hg-muted)]"
+                      : "border-[var(--hg-accent)] text-[var(--hg-accent)] hover:bg-[var(--hg-accent-tint)]")
+                  }
+                >
+                  {pullingPath === entry.path ? "…" : pinned ? "pinned" : "add"}
                 </button>
-              ))}
-            </div>
-          </section>
-        );
-      })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SessionListCard({
+  session,
+  isActive,
+  onSelect,
+  showPin = false,
+  isPinned = false,
+  onPin,
+  onUnpin,
+}: {
+  session: SessionAnalysis;
+  isActive: boolean;
+  onSelect: () => void;
+  showPin?: boolean;
+  isPinned?: boolean;
+  onPin?: () => void;
+  onUnpin?: () => void;
+}) {
+  const pinAction = showPin || isPinned ? onUnpin : onPin;
+  const pinned = showPin || isPinned;
+
+  return (
+    <div
+      className={
+        "w-full rounded-[2px] border transition-colors " +
+        (isActive
+          ? "border-[var(--hg-accent)] bg-[var(--hg-accent-tint)]"
+          : "border-[var(--hg-line)] bg-[var(--hg-surface)] hover:border-[var(--hg-hairline)]")
+      }
+    >
+      <button type="button" onClick={onSelect} className="w-full px-2.5 py-2 text-left">
+        <div className="hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)]">
+          {sessionNavMeta(session)}
+          {session.goodContext ? " · example" : null}
+        </div>
+        <div className="mt-1 text-[12px] leading-snug text-[var(--hg-ink)] line-clamp-2">
+          {sessionNavDetail(session)}
+        </div>
+      </button>
+      {pinAction && (
+        <div className="flex justify-end border-t border-[var(--hg-line)] px-2 py-0.5">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              pinAction();
+            }}
+            className="inline-flex items-center gap-1 rounded-[2px] px-1.5 py-0.5 hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)] hover:text-[var(--hg-ink)]"
+            aria-label={pinned ? "Unpin session" : "Pin session"}
+          >
+            {pinned ? <PinOff size={10} /> : <Pin size={10} />}
+            {pinned ? "unpin" : "pin"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -331,9 +650,20 @@ function AllocationInspector({ state }: { state: AnalysisState }) {
   );
 }
 
-export function SessionAnalysisWorkbench({ state }: { state: AnalysisState }) {
+export function SessionAnalysisWorkbench({
+  state,
+  sessionsPanelCollapsed,
+  onToggleSessionsPanel,
+  showContextConsole = false,
+}: {
+  state: AnalysisState;
+  sessionsPanelCollapsed?: boolean;
+  onToggleSessionsPanel?: () => void;
+  showContextConsole?: boolean;
+}) {
   const session = state.active;
   const snapshot = state.activeSnapshot;
+  const [consoleOpen, setConsoleOpen] = useState(true);
 
   if (state.loading) {
     return <WorkbenchShell title="SESSION ANALYSIS" meta="loading" />;
@@ -347,117 +677,97 @@ export function SessionAnalysisWorkbench({ state }: { state: AnalysisState }) {
     return <WorkbenchShell title="SESSION ANALYSIS" meta="no session selected" />;
   }
 
-  const top = topAllocations(snapshot.allocations, 3);
-  const budget = session.engineBudget || DEFAULT_ENGINE_BUDGET;
   return (
-    <section className="flex-1 min-w-0 flex flex-col bg-[var(--hg-bg)] overflow-auto">
-      <div className="flex-shrink-0 px-9 pt-7 pb-5 border-b border-[var(--hg-line)] bg-[var(--hg-surface-2)]">
-        <div className="flex items-start gap-4">
-          <div className="min-w-0">
+    <section className="flex min-h-0 flex-1 flex-col bg-[var(--hg-bg)]">
+      <ContextViewer
+        session={session}
+        snapshot={snapshot}
+        selectedNodeId={state.selectedContextNodeId}
+        onSelectNode={state.setSelectedContextNodeId}
+        blockDrafts={state.blockDrafts}
+        sessionsPanelCollapsed={sessionsPanelCollapsed}
+        onToggleSessionsPanel={onToggleSessionsPanel}
+      />
+
+      {showContextConsole && (
+      <div className="shrink-0 border-t border-[var(--hg-line)] bg-[var(--hg-surface-2)]">
+        <button
+          type="button"
+          onClick={() => setConsoleOpen((open) => !open)}
+          className="flex w-full items-center gap-2 px-4 py-2 text-left hg-mono text-[10px] uppercase tracking-wider text-[var(--hg-muted)] hover:text-[var(--hg-ink)]"
+        >
+          <Terminal size={12} className="text-[var(--hg-accent)]" />
+          context console
+          <span className="ml-auto">{consoleOpen ? "hide" : "show"}</span>
+        </button>
+        {consoleOpen && (
+          <div className="max-h-[240px] overflow-auto px-4 pb-4">
+            <ContextConsolePanel
+              session={session}
+              snapshot={snapshot}
+              selectedBucket={state.selectedBucket}
+              embedded
+            />
+          </div>
+        )}
+      </div>
+      )}
+    </section>
+  );
+}
+
+function RecentFamiliarCohort({
+  sessions,
+  activeId,
+  onSelect,
+}: {
+  sessions: SessionAnalysis[];
+  activeId: string;
+  onSelect: (id: string) => void;
+}) {
+  const recent = recentFamiliarSessions(sessions);
+  if (!recent.length) return null;
+
+  return (
+    <section className="rounded-[2px] border border-[var(--hg-line)] bg-[var(--hg-surface)] p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <div className="hg-section-label">recent sessions</div>
+          <p className="m-0 mt-1 text-[13px] leading-[1.5] text-[var(--hg-ink-2)]">
+            Start here when you want context you still hold from active work — not curated examples.
+          </p>
+        </div>
+        <span className="hg-pill accent">familiar</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {recent.slice(0, 3).map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onSelect(item.id)}
+            className={
+              "rounded-[2px] border px-3 py-3 text-left transition-colors " +
+              (activeId === item.id
+                ? "border-[var(--hg-accent)] bg-[var(--hg-accent-tint)]"
+                : "border-[var(--hg-line)] bg-[var(--hg-bg-tint)] hover:border-[var(--hg-hairline)]")
+            }
+          >
             <div className="mb-2 flex items-center gap-2">
-              <span className="hg-pill accent">{session.project}</span>
-              <span className="hg-pill">{session.source}</span>
-              <span className="hg-pill">
-                {formatAnalysisTokens(session.contextTokens)} / {formatAnalysisTokens(budget)}
+              <span className="hg-pill">{item.project}</span>
+              <span className="ml-auto hg-mono text-[9px] text-[var(--hg-muted)]">
+                {formatObservedRelative(item.observedAt)}
               </span>
             </div>
-            <h2 className="m-0 hg-mono text-[24px] font-medium tracking-wider uppercase text-[var(--hg-ink)] leading-tight">
-              {session.title}
-            </h2>
-            <p className="mt-2 mb-0 max-w-[760px] text-[13px] leading-[1.55] text-[var(--hg-ink-2)]">
-              {session.summary}
-            </p>
-          </div>
-          <div className="ml-auto min-w-[220px] hg-mono text-[10px] uppercase tracking-wider text-[var(--hg-muted)] leading-[1.9] text-right">
-            <MetaRow label="session" value={session.id.slice(0, 8)} />
-            <MetaRow label="observed" value={session.timeLabel} />
-            <MetaRow label="chunks" value={String(session.chunkCount)} />
-            <MetaRow label="atoms" value={String(session.atoms.length)} />
-            <MetaRow label="slices" value={String(session.slices.length)} />
-            <MetaRow
-              label="engine"
-              value={formatAnalysisTokens(budget)}
-            />
-            {session.modelWindow && <MetaRow label="telemetry" value={formatAnalysisTokens(session.modelWindow)} />}
-          </div>
-        </div>
-      </div>
-
-      <div className="px-9 py-7 space-y-6">
-        {state.data && (
-          <GoodContextCohort
-            sessions={state.data.sessions}
-            activeId={session.id}
-            onSelect={state.setActiveId}
-          />
-        )}
-
-        <ContextMaterialInspector
-          session={session}
-          snapshot={snapshot}
-          selectedBucket={state.selectedBucket}
-          onSelectBucket={state.setSelectedBucket}
-        />
-        <PlainAllocationPanel session={session} snapshot={snapshot} />
-        <ContextConsolePanel
-          session={session}
-          snapshot={snapshot}
-          selectedBucket={state.selectedBucket}
-        />
-
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <div className="hg-section-label">engine budget footprint</div>
-              <div className="mt-1 hg-mono text-[11px] text-[var(--hg-muted)] uppercase tracking-wider">
-                {formatAnalysisTokens(session.contextTokens)} used ·{" "}
-                {formatAnalysisTokens(Math.max(0, budget - session.contextTokens))} available
+            <div className="hg-mono text-[10px] uppercase tracking-wider text-[var(--hg-ink)] leading-[1.35]">
+              {item.title}
+            </div>
+            {item.familiarity && (
+              <div className="mt-2 text-[12px] leading-[1.45] text-[var(--hg-muted)]">
+                {item.familiarity.reason}
               </div>
-            </div>
-            <span className="hg-pill">{Math.round((session.contextTokens / budget) * 100)}%</span>
-          </div>
-          <BudgetBar used={session.contextTokens} budget={budget} heightClass="h-8" />
-        </section>
-
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <div className="hg-section-label">LLM input allocation</div>
-              <div className="mt-1 hg-mono text-[11px] text-[var(--hg-muted)] uppercase tracking-wider">
-                {formatAnalysisTokens(snapshot.coveredTokens)} covered ·{" "}
-                {snapshot.reached ? "observed" : "beyond observed context"}
-              </div>
-            </div>
-            <div className="flex gap-1">
-              {top.map((allocation) => {
-                const meta = bucketMeta(allocation.bucket);
-                return (
-                  <span key={allocation.bucket} className="hg-pill">
-                    {meta.short} {Math.round(allocation.percent)}%
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-          <StackedBar allocations={snapshot.allocations} heightClass="h-10" />
-        </section>
-
-        <div className="grid grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] gap-5">
-          <ThresholdMatrix session={session} activeThreshold={state.threshold} onSelect={state.setThreshold} />
-          <RoutingTree snapshot={snapshot} />
-        </div>
-
-        {state.selectedInsight && <BucketInsightPanel insight={state.selectedInsight} />}
-        {state.selectedInsight && (
-          <AnalysisLoopPanel
-            session={session}
-            insight={state.selectedInsight}
-            snapshot={snapshot}
-            questionId={state.questionId}
-            onQuestionChange={state.setQuestionId}
-          />
-        )}
-        <ContextBuilderPanel state={state} session={session} />
+            )}
+          </button>
+        ))}
       </div>
     </section>
   );
@@ -584,10 +894,12 @@ function ContextConsolePanel({
   session,
   snapshot,
   selectedBucket,
+  embedded = false,
 }: {
   session: SessionAnalysis;
   snapshot: ThresholdSnapshot;
   selectedBucket: ContextBucketId;
+  embedded?: boolean;
 }) {
   const [input, setInput] = useState("What made this session a good context?");
   const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; body: string; mode?: string }>>([
@@ -646,14 +958,21 @@ function ContextConsolePanel({
   };
 
   return (
-    <section className="rounded-[2px] border border-[var(--hg-line)] bg-[#080b0d] p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <Terminal size={14} className="text-[var(--hg-accent)]" />
-        <span className="hg-section-label">context console</span>
-        <span className="hg-pill ml-auto">whole session</span>
-        <span className="hg-pill">{bucketMeta(selectedBucket).label} selected</span>
-      </div>
-      <div className="max-h-[300px] space-y-3 overflow-auto rounded-[2px] border border-[var(--hg-line)] bg-black/30 p-3">
+    <section className={embedded ? "" : "rounded-[2px] border border-[var(--hg-line)] bg-[#080b0d] p-4"}>
+      {!embedded && (
+        <div className="mb-3 flex items-center gap-2">
+          <Terminal size={14} className="text-[var(--hg-accent)]" />
+          <span className="hg-section-label">context console</span>
+          <span className="hg-pill ml-auto">whole session</span>
+          <span className="hg-pill">{bucketMeta(selectedBucket).label} selected</span>
+        </div>
+      )}
+      <div
+        className={
+          (embedded ? "max-h-[160px] " : "max-h-[300px] ") +
+          "space-y-3 overflow-auto rounded-[2px] border border-[var(--hg-line)] bg-black/30 p-3"
+        }
+      >
         {messages.map((message, index) => (
           <div key={`${message.role}-${index}`} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3">
             <div className="hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)]">
@@ -699,16 +1018,309 @@ function ContextConsolePanel({
   );
 }
 
-function ContextMaterialInspector({
+function ContextExplorer({
+  state,
   session,
   snapshot,
-  selectedBucket,
+}: {
+  state: AnalysisState;
+  session: SessionAnalysis;
+  snapshot: ThresholdSnapshot;
+}) {
+  const [tab, setTab] = useState<"window" | "material" | "recipe">("window");
+
+  return (
+    <section className="rounded-[2px] border border-[var(--hg-line)] bg-[var(--hg-surface)] p-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="hg-section-label">session context</div>
+          <h3 className="m-0 mt-1 text-[18px] font-medium text-[var(--hg-ink)] leading-snug">
+            Explore what fills the window
+          </h3>
+          <p className="m-0 mt-2 max-w-[720px] text-[13px] leading-[1.55] text-[var(--hg-ink-2)]">
+            At {formatAnalysisTokens(snapshot.threshold)}: {formatAnalysisTokens(snapshot.coveredTokens)} covered
+            ({formatAnalysisTokens(snapshot.pinnedTokens)} pinned · {formatAnalysisTokens(snapshot.tailTokens)} recent tail).
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {(
+            [
+              { id: "window" as const, label: "Window", icon: Layers },
+              { id: "material" as const, label: "By bucket", icon: ListTree },
+              { id: "recipe" as const, label: "Recipe", icon: GitBranch },
+            ] as const
+          ).map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className={
+                "inline-flex items-center gap-1.5 rounded-[2px] border px-3 py-1.5 hg-mono text-[10px] uppercase tracking-wider transition-colors " +
+                (tab === id
+                  ? "border-[var(--hg-accent)] bg-[var(--hg-accent)] text-[var(--hg-bg)]"
+                  : "border-[var(--hg-line)] bg-[var(--hg-bg-tint)] text-[var(--hg-muted)] hover:text-[var(--hg-ink)]")
+              }
+            >
+              <Icon size={11} />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === "window" && (
+        <ContextWindowPanel
+          session={session}
+          snapshot={snapshot}
+          selectedBucket={state.selectedBucket}
+          onSelectBucket={state.setSelectedBucket}
+        />
+      )}
+      {tab === "material" && (
+        <ContextMaterialInspector
+          session={session}
+          snapshot={snapshot}
+          selectedBucket={state.selectedBucket}
+          onSelectBucket={state.setSelectedBucket}
+          embedded
+        />
+      )}
+      {tab === "recipe" && <ContextBuilderPanel state={state} session={session} embedded />}
+    </section>
+  );
+}
+
+function ContextWindowPanel({
+  session,
+  snapshot,
+  selectedBucket: _selectedBucket,
   onSelectBucket,
 }: {
   session: SessionAnalysis;
   snapshot: ThresholdSnapshot;
   selectedBucket: ContextBucketId;
   onSelectBucket: (bucket: ContextBucketId) => void;
+}) {
+  const ordered = useMemo(
+    () => atomsInWindowOrder(session, snapshot),
+    [session, snapshot],
+  );
+  const { pinned, tail } = useMemo(() => splitWindowSections(ordered), [ordered]);
+  const [bucketFilter, setBucketFilter] = useState<ContextBucketId | "all">("all");
+  const [selectedAtomId, setSelectedAtomId] = useState("");
+
+  const filterAtoms = (atoms: ContextAtom[]) =>
+    bucketFilter === "all" ? atoms : atoms.filter((atom) => atom.bucket === bucketFilter);
+
+  const pinnedVisible = filterAtoms(pinned);
+  const tailVisible = filterAtoms(tail);
+  const visible = [...pinnedVisible, ...tailVisible];
+
+  useEffect(() => {
+    setSelectedAtomId(visible[0]?.id ?? "");
+    setBucketFilter("all");
+  }, [session.id, snapshot.threshold]);
+
+  useEffect(() => {
+    if (!visible.some((atom) => atom.id === selectedAtomId)) {
+      setSelectedAtomId(visible[0]?.id ?? "");
+    }
+  }, [visible, selectedAtomId]);
+
+  const selectedAtom = visible.find((atom) => atom.id === selectedAtomId) ?? visible[0] ?? null;
+  const activeBuckets = useMemo(() => {
+    const counts = new Map<ContextBucketId, number>();
+    for (const atom of ordered) {
+      counts.set(atom.bucket, (counts.get(atom.bucket) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [ordered]);
+
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)] gap-4">
+      <div className="min-w-0">
+        <div className="mb-3 flex flex-wrap gap-1">
+          <button
+            type="button"
+            onClick={() => setBucketFilter("all")}
+            className={
+              "rounded-[2px] border px-2 py-1 hg-mono text-[9px] uppercase tracking-wider " +
+              (bucketFilter === "all"
+                ? "border-[var(--hg-accent)] bg-[var(--hg-accent-tint)] text-[var(--hg-ink)]"
+                : "border-[var(--hg-line)] text-[var(--hg-muted)] hover:text-[var(--hg-ink)]")
+            }
+          >
+            all · {ordered.length}
+          </button>
+          {activeBuckets.map(([bucket, count]) => {
+            const meta = bucketMeta(bucket);
+            return (
+              <button
+                key={bucket}
+                type="button"
+                onClick={() => {
+                  setBucketFilter(bucket);
+                  onSelectBucket(bucket);
+                }}
+                className={
+                  "inline-flex items-center gap-1 rounded-[2px] border px-2 py-1 hg-mono text-[9px] uppercase tracking-wider " +
+                  (bucketFilter === bucket
+                    ? "border-[var(--hg-accent)] bg-[var(--hg-accent-tint)] text-[var(--hg-ink)]"
+                    : "border-[var(--hg-line)] text-[var(--hg-muted)] hover:text-[var(--hg-ink)]")
+                }
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.color }} />
+                {meta.label} · {count}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="max-h-[560px] space-y-4 overflow-auto pr-1">
+          {pinnedVisible.length > 0 && (
+            <WindowAtomSection
+              title="Pinned orientation"
+              hint={`${formatAnalysisTokens(snapshot.pinnedTokens)} · policy, task, environment`}
+              atoms={pinnedVisible}
+              selectedAtomId={selectedAtomId}
+              onSelectAtom={(atom) => {
+                setSelectedAtomId(atom.id);
+                onSelectBucket(atom.bucket);
+              }}
+            />
+          )}
+          {tailVisible.length > 0 && (
+            <WindowAtomSection
+              title="Recent tail"
+              hint={`${formatAnalysisTokens(snapshot.tailTokens)} · newest transcript material`}
+              atoms={tailVisible}
+              selectedAtomId={selectedAtomId}
+              onSelectAtom={(atom) => {
+                setSelectedAtomId(atom.id);
+                onSelectBucket(atom.bucket);
+              }}
+            />
+          )}
+          {!visible.length && (
+            <div className="rounded-[2px] border border-dashed border-[var(--hg-hairline)] px-3 py-8 text-center text-[12px] text-[var(--hg-muted)]">
+              No atoms match this filter at the current threshold.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="min-w-0">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="hg-section-label">Selected atom</span>
+          {selectedAtom && (
+            <span className="hg-mono text-[9px] text-[var(--hg-muted)]">
+              {bucketMeta(selectedAtom.bucket).label}
+            </span>
+          )}
+        </div>
+        <AtomDetail atom={selectedAtom} />
+        {selectedAtom && (
+          <div className="mt-3 rounded-[2px] border border-[var(--hg-line)] bg-[var(--hg-bg-tint)] px-3 py-2">
+            <div className="hg-section-label mb-1">In this session</div>
+            <p className="m-0 text-[12px] leading-[1.45] text-[var(--hg-muted)]">
+              Turn {selectedAtom.turnIndex + 1}
+              {selectedAtom.lineNumber ? ` · line ${selectedAtom.lineNumber}` : ""}
+              {selectedAtom.pinned ? " · stays pinned in the window" : " · enters via recent tail"}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WindowAtomSection({
+  title,
+  hint,
+  atoms,
+  selectedAtomId,
+  onSelectAtom,
+}: {
+  title: string;
+  hint: string;
+  atoms: ContextAtom[];
+  selectedAtomId: string;
+  onSelectAtom: (atom: ContextAtom) => void;
+}) {
+  return (
+    <section>
+      <div className="mb-2 flex items-baseline gap-2">
+        <span className="hg-section-label">{title}</span>
+        <span className="hg-mono text-[9px] text-[var(--hg-muted)]">{hint}</span>
+      </div>
+      <div className="space-y-1">
+        {atoms.map((atom) => (
+          <WindowAtomRow
+            key={atom.id}
+            atom={atom}
+            isSelected={atom.id === selectedAtomId}
+            onSelect={() => onSelectAtom(atom)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function WindowAtomRow({
+  atom,
+  isSelected,
+  onSelect,
+}: {
+  atom: ContextAtom;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const meta = bucketMeta(atom.bucket);
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={
+        "w-full rounded-[2px] border px-2.5 py-2 text-left transition-colors " +
+        (isSelected
+          ? "border-[var(--hg-accent)] bg-[var(--hg-accent-tint)]"
+          : "border-[var(--hg-line)] bg-[var(--hg-bg-tint)] hover:border-[var(--hg-hairline)]")
+      }
+    >
+      <div className="flex items-center gap-2">
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: meta.color }} />
+        <span className="min-w-0 flex-1 truncate hg-mono text-[10px] text-[var(--hg-ink)]">
+          {atom.label}
+        </span>
+        <span className="shrink-0 hg-mono text-[9px] text-[var(--hg-muted)]">
+          {formatAnalysisTokens(atom.tokens)}
+        </span>
+      </div>
+      <div className="mt-1 pl-4 text-[11px] leading-[1.4] text-[var(--hg-muted)] line-clamp-2">
+        {atom.summary}
+      </div>
+      <div className="mt-1 pl-4 flex flex-wrap gap-2 hg-mono text-[8px] uppercase tracking-wider text-[var(--hg-muted)]">
+        <span>{atom.sourceType}</span>
+        {atom.lineNumber && <span>L{atom.lineNumber}</span>}
+        {atom.pinned && <span className="text-[var(--hg-accent)]">pinned</span>}
+      </div>
+    </button>
+  );
+}
+
+function ContextMaterialInspector({
+  session,
+  snapshot,
+  selectedBucket,
+  onSelectBucket,
+  embedded = false,
+}: {
+  session: SessionAnalysis;
+  snapshot: ThresholdSnapshot;
+  selectedBucket: ContextBucketId;
+  onSelectBucket: (bucket: ContextBucketId) => void;
+  embedded?: boolean;
 }) {
   const snapshotAtomIds = useMemo(() => new Set(snapshot.chunkRefs), [snapshot.chunkRefs]);
   const includedAtoms = useMemo(
@@ -753,23 +1365,25 @@ function ContextMaterialInspector({
   }, [selectedSliceId, selectedBucket, session.id, snapshot.threshold]);
 
   return (
-    <section className="rounded-[2px] border border-[var(--hg-line)] bg-[var(--hg-surface)] p-4">
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <div className="hg-section-label">context material inspector</div>
-          <h3 className="m-0 mt-1 hg-mono text-[18px] uppercase tracking-wider text-[var(--hg-ink)]">
-            See the actual context
-          </h3>
-          <p className="m-0 mt-2 max-w-[760px] text-[13px] leading-[1.55] text-[var(--hg-ink-2)]">
-            This drills from allocation buckets into semantic slices, then into transcript atoms with raw excerpts.
-            The atoms shown are the material included at the selected {formatAnalysisTokens(snapshot.coveredTokens)} threshold.
-          </p>
+    <div>
+      {!embedded && (
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <div className="hg-section-label">context material inspector</div>
+            <h3 className="m-0 mt-1 text-[18px] font-medium text-[var(--hg-ink)] leading-snug">
+              Drill by bucket and slice
+            </h3>
+            <p className="m-0 mt-2 max-w-[760px] text-[13px] leading-[1.55] text-[var(--hg-ink-2)]">
+              Semantic slices group related atoms. Material shown matches the{" "}
+              {formatAnalysisTokens(snapshot.coveredTokens)} threshold.
+            </p>
+          </div>
+          <div className="hg-mono text-[10px] uppercase tracking-wider text-[var(--hg-muted)] text-right">
+            <div>{includedAtoms.length} atoms in threshold</div>
+            <div>{bucketAtoms.length} in selected bucket</div>
+          </div>
         </div>
-        <div className="hg-mono text-[10px] uppercase tracking-wider text-[var(--hg-muted)] text-right">
-          <div>{includedAtoms.length} atoms in threshold</div>
-          <div>{bucketAtoms.length} in selected bucket</div>
-        </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-[220px_minmax(260px,0.8fr)_minmax(0,1.2fr)] gap-3">
         <div className="space-y-2">
@@ -837,7 +1451,7 @@ function ContextMaterialInspector({
           onSelectAtom={setSelectedAtomId}
         />
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -945,7 +1559,11 @@ function AtomDetail({ atom }: { atom: ContextAtom | null }) {
           {atom.label}
         </span>
         {atom.pinned && <span className="hg-pill accent">pinned</span>}
-        {atom.excerptTruncated && <span className="hg-pill">clipped</span>}
+        {atom.excerptTruncated && (
+          <span className="hg-pill" title="Truncated in the source transcript, not by Contextual">
+            source clipped
+          </span>
+        )}
       </div>
       <div className="mb-3 grid grid-cols-2 gap-2">
         <InsightMetric label="source" value={atom.sourceType} />
@@ -957,11 +1575,11 @@ function AtomDetail({ atom }: { atom: ContextAtom | null }) {
         {atom.lineNumber && <div>Transcript line {atom.lineNumber}</div>}
         {atom.command && <div className="font-mono break-all">Command: {atom.command}</div>}
         {atom.fileRefs.length > 0 && (
-          <div className="font-mono break-all">Files: {atom.fileRefs.slice(0, 4).join(", ")}</div>
+          <div className="font-mono break-all">Files: {atom.fileRefs.join(", ")}</div>
         )}
         <div className="font-mono">Hash: {atom.contentHash}</div>
       </div>
-      <pre className="max-h-[220px] overflow-auto whitespace-pre-wrap rounded-[2px] border border-[var(--hg-line)] bg-black/35 p-3 text-[11px] leading-[1.45] text-[var(--hg-ink-2)]">
+      <pre className="max-h-[min(70vh,960px)] overflow-auto whitespace-pre-wrap rounded-[2px] border border-[var(--hg-line)] bg-black/35 p-3 text-[11px] leading-[1.45] text-[var(--hg-ink-2)]">
         {atom.excerpt || atom.summary}
       </pre>
     </div>
@@ -971,9 +1589,11 @@ function AtomDetail({ atom }: { atom: ContextAtom | null }) {
 function ContextBuilderPanel({
   state,
   session,
+  embedded = false,
 }: {
   state: AnalysisState;
   session: SessionAnalysis;
+  embedded?: boolean;
 }) {
   const blocks = session.recipeDraft.blocks;
   const selected = blocks.filter((block) => state.selectedBlockIds.includes(block.id));
@@ -992,36 +1612,52 @@ function ContextBuilderPanel({
   const status =
     selectedTokens < targetMin ? "under target" : selectedTokens > targetMax ? "over target" : "sweet spot";
 
-  return (
-    <section className="rounded-[2px] border border-[var(--hg-line)] bg-[var(--hg-surface)] p-4">
-      <div className="mb-4 flex items-start gap-4">
-        <div>
-          <div className="hg-section-label">context builder</div>
-          <h3 className="m-0 mt-1 hg-mono text-[18px] uppercase tracking-wider text-[var(--hg-ink)]">
-            {session.recipeDraft.title}
-          </h3>
-          <p className="m-0 mt-2 max-w-[720px] text-[12px] leading-[1.5] text-[var(--hg-muted)]">
-            Candidate blocks are compressed drafts of LLM input context. Toggle them into a warm-start recipe,
-            then edit the draft body directly before promotion.
+  const body = (
+    <>
+      {!embedded && (
+        <div className="mb-4 flex items-start gap-4">
+          <div>
+            <div className="hg-section-label">context builder</div>
+            <h3 className="m-0 mt-1 text-[18px] font-medium text-[var(--hg-ink)] leading-snug">
+              {session.recipeDraft.title}
+            </h3>
+            <p className="m-0 mt-2 max-w-[720px] text-[12px] leading-[1.5] text-[var(--hg-muted)]">
+              Candidate blocks are compressed drafts of LLM input context. Toggle them into a warm-start recipe,
+              then edit the draft body directly before promotion.
+            </p>
+          </div>
+          <div className="ml-auto min-w-[260px]">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="hg-section-label">recipe load</span>
+              <span className="hg-pill accent">{status}</span>
+            </div>
+            <BudgetBar used={selectedTokens} budget={targetMax} heightClass="h-4" />
+            <div className="mt-2 hg-mono text-[10px] uppercase tracking-wider text-[var(--hg-muted)]">
+              {formatAnalysisTokens(selectedTokens)} / {formatAnalysisTokens(targetMin)}-
+              {formatAnalysisTokens(targetMax)} target
+            </div>
+          </div>
+        </div>
+      )}
+      {embedded && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="m-0 max-w-[640px] text-[12px] leading-[1.5] text-[var(--hg-muted)]">
+            Compress session slices into reusable warm-start blocks. Edit bodies before promoting to Fixed.
           </p>
-        </div>
-        <div className="ml-auto min-w-[260px]">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="hg-section-label">recipe load</span>
+          <div className="flex items-center gap-2">
             <span className="hg-pill accent">{status}</span>
-          </div>
-          <BudgetBar used={selectedTokens} budget={targetMax} heightClass="h-4" />
-          <div className="mt-2 hg-mono text-[10px] uppercase tracking-wider text-[var(--hg-muted)]">
-            {formatAnalysisTokens(selectedTokens)} / {formatAnalysisTokens(targetMin)}-
-            {formatAnalysisTokens(targetMax)} target
+            <span className="hg-mono text-[10px] text-[var(--hg-muted)]">
+              {formatAnalysisTokens(selectedTokens)} / {formatAnalysisTokens(targetMin)}–
+              {formatAnalysisTokens(targetMax)}
+            </span>
           </div>
         </div>
-      </div>
+      )}
 
       <RecipeSlotGrid slots={liveSlots} />
 
       <div className="grid grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)] gap-4">
-        <div className="space-y-2">
+        <div className="space-y-2 max-h-[520px] overflow-auto pr-1">
           {blocks.map((block) => (
             <ContextBlockCard
               key={block.id}
@@ -1042,6 +1678,14 @@ function ContextBuilderPanel({
           targetMax={targetMax}
         />
       </div>
+    </>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <section className="rounded-[2px] border border-[var(--hg-line)] bg-[var(--hg-surface)] p-4">
+      {body}
     </section>
   );
 }
