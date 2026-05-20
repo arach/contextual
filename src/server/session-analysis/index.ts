@@ -30,6 +30,7 @@ import type {
   SessionAnalysisAskRequest,
   SessionAnalysisAskResponse,
   SessionAnalysis,
+  SessionBootstrapResponse,
   SessionAnalysisResponse,
   SessionCatalogEntry,
   SessionCatalogResponse,
@@ -2136,6 +2137,21 @@ export async function getSessionCatalogResponse(params?: {
   };
 }
 
+export async function getSessionBootstrapResponse(): Promise<SessionBootstrapResponse> {
+  const entries = filterCatalog(await getSessionCatalogIndex(), "", undefined, 28);
+  const activeEntry = entries[0] ?? null;
+  const activeSession = activeEntry
+    ? (await pullSessionAnalyses([activeEntry.path]))[0] ?? null
+    : null;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    thresholds: ANALYSIS_THRESHOLDS,
+    catalog: entries,
+    activeSession,
+  };
+}
+
 export async function pullSessionAnalysisResponse(
   request: SessionPullRequest,
 ): Promise<SessionPullResponse> {
@@ -2146,7 +2162,6 @@ export async function pullSessionAnalysisResponse(
   if (!paths.length) {
     throw new Error("path or paths required");
   }
-  if (sessionRegistry.size === 0) await loadSessionAnalyses();
   const sessions = await pullSessionAnalyses(paths);
   return { sessions };
 }
@@ -2157,8 +2172,15 @@ export async function getSessionAnalysisAskResponse(
   if (!body.sessionId || !body.question?.trim()) {
     throw new Error("sessionId and question required");
   }
-  if (sessionRegistry.size === 0) await loadSessionAnalyses();
-  const session = sessionRegistry.get(body.sessionId);
+  let session = sessionRegistry.get(body.sessionId);
+  if (!session) {
+    const catalog = await getSessionCatalogIndex();
+    const entry = catalog.find((candidate) => candidate.id === body.sessionId);
+    if (entry) {
+      const pulled = await pullSessionAnalyses([entry.path]);
+      session = pulled[0] ?? sessionRegistry.get(body.sessionId);
+    }
+  }
   if (!session) throw new Error(`unknown session: ${body.sessionId}`);
   const snapshot =
     session.snapshots.find((candidate) => candidate.threshold === body.threshold) ??

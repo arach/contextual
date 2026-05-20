@@ -329,6 +329,13 @@ export interface SessionCatalogResponse {
   entries: SessionCatalogEntry[];
 }
 
+export interface SessionBootstrapResponse {
+  generatedAt: string;
+  thresholds: number[];
+  catalog: SessionCatalogEntry[];
+  activeSession: SessionAnalysis | null;
+}
+
 export interface SessionPullRequest {
   path?: string;
   paths?: string[];
