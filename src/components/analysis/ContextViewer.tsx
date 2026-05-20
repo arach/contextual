@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -6,11 +8,12 @@ import {
   FileText,
   FolderClosed,
   FolderOpen,
-  PanelLeftClose,
-  PanelLeftOpen,
+  GitBranch,
   Search,
   X,
 } from "lucide-react";
+import { CodeEditor, type DocumentLanguage } from "hudsonkit/controls";
+import { usePersistentState } from "hudsonkit";
 
 import {
   bucketMeta,
@@ -31,11 +34,24 @@ import {
   flattenContextTree,
   type ContextTreeNode,
 } from "@/lib/contextTree";
+import {
+  adjacentVisibleNodeId,
+  buildContextTreeNavIndex,
+  scrollExploreTreeNodeIntoView,
+} from "@/lib/contextTreeNav";
+import { isEditableKeyboardTarget } from "@/lib/keyboardTarget";
+import { EXPLORE_PANEL_IDS } from "@/lib/explorePanels";
 import { displaySessionTitle } from "@/lib/sessionLabel";
 import { sessionIdSuffix, sessionNavMeta } from "@/lib/sessionNavLabel";
 import { formatObservedRelative } from "@/lib/sessionExplore";
+import {
+  ExploreSessionStrip,
+  type ExploreAnalysisState,
+} from "@/components/analysis/SessionAnalysis";
 
-const TREE_WIDTH = 260;
+const CONTEXT_SIDEBAR_DEFAULT = 260;
+const CONTEXT_SIDEBAR_MIN = 200;
+const CONTEXT_SIDEBAR_MAX = 480;
 
 interface ContextViewerProps {
   session: SessionAnalysis;
@@ -43,8 +59,11 @@ interface ContextViewerProps {
   selectedNodeId: string;
   onSelectNode: (id: string) => void;
   blockDrafts: Record<string, string>;
-  sessionsPanelCollapsed?: boolean;
-  onToggleSessionsPanel?: () => void;
+  contextNodeDrafts: Record<string, string>;
+  onBlockDraftChange: (blockId: string, body: string) => void;
+  onContextNodeDraftChange: (nodeId: string, body: string) => void;
+  exploreState?: ExploreAnalysisState;
+  onOpenTree?: () => void;
 }
 
 export function ContextViewer({
@@ -53,9 +72,46 @@ export function ContextViewer({
   selectedNodeId,
   onSelectNode,
   blockDrafts,
-  sessionsPanelCollapsed,
-  onToggleSessionsPanel,
+  contextNodeDrafts,
+  onBlockDraftChange,
+  onContextNodeDraftChange,
+  exploreState,
+  onOpenTree,
 }: ContextViewerProps) {
+  const [sidebarWidth, setSidebarWidth] = usePersistentState(
+    "contextual.exploreContextWidth",
+    CONTEXT_SIDEBAR_DEFAULT,
+  );
+  const dragRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  const onSidebarResizeStart = useCallback(
+    (event: ReactMouseEvent) => {
+      event.preventDefault();
+      dragRef.current = { startX: event.clientX, startW: sidebarWidth };
+      const move = (ev: MouseEvent) => {
+        if (!dragRef.current) return;
+        const delta = ev.clientX - dragRef.current.startX;
+        const next = Math.max(
+          CONTEXT_SIDEBAR_MIN,
+          Math.min(CONTEXT_SIDEBAR_MAX, dragRef.current.startW + delta),
+        );
+        setSidebarWidth(next);
+      };
+      const up = () => {
+        dragRef.current = null;
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      document.body.style.cursor = "ew-resize";
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    },
+    [sidebarWidth, setSidebarWidth],
+  );
+
   const tree = useMemo(() => buildContextTree(session, snapshot), [session, snapshot]);
   const [treeQuery, setTreeQuery] = useState("");
   const filteredTree = useMemo(
@@ -102,34 +158,102 @@ export function ContextViewer({
     });
   };
 
+  const onTreeKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (isEditableKeyboardTarget(event.target)) return;
+    if (!visibleTree) return;
+
+    const roots = visibleTree.children ?? [];
+    const navIndex = buildContextTreeNavIndex(roots, expanded);
+    const currentId = selectedNodeId;
+
+    const moveTo = (id: string | null) => {
+      if (!id) return;
+      onSelectNode(id);
+      scrollExploreTreeNodeIntoView(id);
+    };
+
+    if (event.key === "ArrowDown") {
+      const nextId = adjacentVisibleNodeId(navIndex, currentId, 1);
+      if (!nextId) return;
+      event.preventDefault();
+      moveTo(nextId);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      const nextId = adjacentVisibleNodeId(navIndex, currentId, -1);
+      if (!nextId) return;
+      event.preventDefault();
+      moveTo(nextId);
+      return;
+    }
+
+    const current = findContextNode(visibleTree, currentId);
+    const hasChildren = Boolean(current?.children?.length);
+    const isExpanded = expanded.has(currentId);
+
+    if (event.key === "ArrowRight") {
+      if (!current || !hasChildren) return;
+      event.preventDefault();
+      if (!isExpanded) {
+        toggleExpanded(currentId);
+        return;
+      }
+      moveTo(current.children![0]!.id);
+      return;
+    }
+
+    if (event.key === "ArrowLeft") {
+      if (!current) return;
+      event.preventDefault();
+      if (hasChildren && isExpanded) {
+        toggleExpanded(currentId);
+        return;
+      }
+      moveTo(navIndex.parentById.get(currentId) ?? null);
+    }
+  };
+
+  useEffect(() => {
+    scrollExploreTreeNodeIntoView(selectedNodeId);
+  }, [selectedNodeId]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[var(--hg-surface-2)] px-3 py-1.5">
-        {onToggleSessionsPanel && (
-          <button
-            type="button"
-            onClick={onToggleSessionsPanel}
-            className="inline-flex items-center gap-1 rounded-[2px] border border-[var(--hg-line)] px-2 py-1 hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)] hover:text-[var(--hg-ink)]"
-            title={sessionsPanelCollapsed ? "Show sessions panel" : "Hide sessions panel"}
-          >
-            {sessionsPanelCollapsed ? <PanelLeftOpen size={12} /> : <PanelLeftClose size={12} />}
-            sessions
-          </button>
-        )}
         <span className="hg-mono text-[10px] text-[var(--hg-muted)] truncate">
           {sessionNavMeta(session)} · {formatAnalysisTokens(snapshot.threshold)} window
         </span>
-        <span className="ml-auto shrink-0 hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)]">
-          contextual model
-        </span>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {onOpenTree && (
+            <button
+              type="button"
+              onClick={onOpenTree}
+              className="inline-flex items-center gap-1 rounded-[2px] border border-[var(--hg-line)] px-2 py-1 hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)] hover:text-[var(--hg-ink)]"
+              title="Open pi session fork tree (⌘T)"
+            >
+              <GitBranch size={12} />
+              fork tree
+            </button>
+          )}
+          <span className="hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)]">
+            contextual model
+          </span>
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <aside
-          className="shrink-0 overflow-auto border-r border-[var(--hg-line)] bg-[var(--hg-surface)]"
-          style={{ width: TREE_WIDTH }}
-        >
-          <div className="border-b border-[var(--hg-line)] px-3 py-2">
+        <div className="relative flex shrink-0" style={{ width: sidebarWidth }}>
+          <aside
+            id={EXPLORE_PANEL_IDS.tree}
+            tabIndex={0}
+            onKeyDown={onTreeKeyDown}
+            className="flex h-full min-w-0 flex-col border-r border-[var(--hg-line)] bg-[var(--hg-surface)] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--hg-accent)]"
+            aria-label="Session and context tree"
+          >
+            {exploreState && <ExploreSessionStrip state={exploreState} />}
+            <div className="min-h-0 flex-1 overflow-auto">
+            <div className="border-b border-[var(--hg-line)] px-3 py-2">
             <div className="hg-section-label">context</div>
             <div className="mt-0.5 text-[10px] leading-snug text-[var(--hg-muted)]">
               verbatim transcript atoms · contextual buckets &amp; slices
@@ -177,13 +301,32 @@ export function ContextViewer({
               />
             ))}
           </div>
-        </aside>
+          </div>
+          </aside>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize context sidebar"
+            onMouseDown={onSidebarResizeStart}
+            className="absolute right-0 top-0 bottom-0 z-10 flex w-[7px] cursor-ew-resize items-center justify-center group"
+          >
+            <div className="absolute right-0 top-0 bottom-0 w-px bg-[var(--hg-line)] transition-colors group-hover:bg-[var(--hg-accent)]/40" />
+            <div className="flex flex-col gap-[3px] opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="h-[3px] w-[3px] rounded-full bg-[var(--hg-muted)] group-hover:bg-[var(--hg-accent)]" />
+              <div className="h-[3px] w-[3px] rounded-full bg-[var(--hg-muted)] group-hover:bg-[var(--hg-accent)]" />
+              <div className="h-[3px] w-[3px] rounded-full bg-[var(--hg-muted)] group-hover:bg-[var(--hg-accent)]" />
+            </div>
+          </div>
+        </div>
 
         <ContextEditorPane
           session={session}
           snapshot={snapshot}
           node={selected}
           blockDrafts={blockDrafts}
+          contextNodeDrafts={contextNodeDrafts}
+          onBlockDraftChange={onBlockDraftChange}
+          onContextNodeDraftChange={onContextNodeDraftChange}
         />
       </div>
     </div>
@@ -223,6 +366,7 @@ function ContextTreeBranch({
     <>
       <button
         type="button"
+        data-explore-tree-node-id={node.id}
         onClick={() => {
           if (isFolder && hasChildren) onToggle(node.id);
           onSelect(node.id);
@@ -300,15 +444,52 @@ function ContextEditorPane({
   snapshot,
   node,
   blockDrafts,
+  contextNodeDrafts,
+  onBlockDraftChange,
+  onContextNodeDraftChange,
 }: {
   session: SessionAnalysis;
   snapshot: ThresholdSnapshot;
   node: ContextTreeNode | null;
   blockDrafts: Record<string, string>;
+  contextNodeDrafts: Record<string, string>;
+  onBlockDraftChange: (blockId: string, body: string) => void;
+  onContextNodeDraftChange: (nodeId: string, body: string) => void;
 }) {
+  const sourceDoc = useMemo(
+    () => (node ? buildEditorDocument(session, snapshot, node, {}) : null),
+    [session, snapshot, node],
+  );
+
   const content = useMemo(
     () => (node ? buildEditorDocument(session, snapshot, node, blockDrafts) : null),
     [session, snapshot, node, blockDrafts],
+  );
+
+  const code = useMemo(() => {
+    if (!node || !content) return "";
+    if (node.kind === "block" && node.blockId) {
+      return blockDrafts[node.blockId] ?? content.lines.join("\n");
+    }
+    return contextNodeDrafts[node.id] ?? content.lines.join("\n");
+  }, [node, content, blockDrafts, contextNodeDrafts]);
+
+  const isDirty = useMemo(() => {
+    if (!node || !sourceDoc) return false;
+    const baseline = sourceDoc.lines.join("\n");
+    return code !== baseline;
+  }, [node, sourceDoc, code]);
+
+  const onChange = useCallback(
+    (next: string) => {
+      if (!node) return;
+      if (node.kind === "block" && node.blockId) {
+        onBlockDraftChange(node.blockId, next);
+        return;
+      }
+      onContextNodeDraftChange(node.id, next);
+    },
+    [node, onBlockDraftChange, onContextNodeDraftChange],
   );
 
   if (!node || !content) {
@@ -327,6 +508,11 @@ function ContextEditorPane({
           {node.path.join(" / ")}
         </div>
         {content.badge && <span className="hg-pill">{content.badge}</span>}
+        {isDirty && (
+          <span className="hg-pill accent" title="Local draft — not written back to the source transcript">
+            draft
+          </span>
+        )}
         {node.kind === "atom" && content.sourceTruncated && (
           <span className="hg-pill" title="Truncated in the source transcript, not by Contextual">
             source clipped
@@ -344,93 +530,49 @@ function ContextEditorPane({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        <LineNumberedDocument lines={content.lines} tone={content.tone} />
+      <div className="min-h-0 flex-1">
+        <CodeEditor
+          key={node.id}
+          code={code}
+          language={inferDocumentLanguage(node, content.tone ?? "plain", code)}
+          filename={node.path[node.path.length - 1]}
+          onChange={onChange}
+          showLineNumbers
+          className="h-full min-h-0"
+        />
       </div>
-    </div>
-  );
-}
-
-function LineNumberedDocument({
-  lines,
-  tone = "plain",
-}: {
-  lines: string[];
-  tone?: EditorTone;
-}) {
-  const width = String(lines.length).length;
-  return (
-    <div className="min-w-full py-3 font-mono text-[13px] leading-[1.65] text-[#d6dde3]">
-      {lines.map((line, index) => (
-        <div
-          key={index}
-          className="grid hover:bg-white/[0.03]"
-          style={{ gridTemplateColumns: `${width + 2}ch 1fr` }}
-        >
-          <span className="select-none pr-3 text-right text-[#5c6770]">{index + 1}</span>
-          <span className="whitespace-pre-wrap break-words pr-6">
-            <EditorLine line={line} tone={tone} />
-          </span>
-        </div>
-      ))}
     </div>
   );
 }
 
 type EditorTone = "plain" | "markdown" | "yaml-frontmatter" | "code";
 
-function EditorLine({ line, tone }: { line: string; tone: EditorTone }) {
-  if (!line) return " ";
+function inferDocumentLanguage(
+  node: ContextTreeNode,
+  tone: EditorTone,
+  text: string,
+): DocumentLanguage {
+  const filename = node.path[node.path.length - 1]?.toLowerCase() ?? "";
+  if (filename.endsWith(".json")) return "json";
+  if (filename.endsWith(".md") || filename.endsWith(".mdx")) return "markdown";
+  if (filename.endsWith(".css")) return "css";
+  if (filename.endsWith(".html") || filename.endsWith(".htm")) return "html";
+  if (filename.endsWith(".sh")) return "shell";
+  if (/\.(tsx?|jsx?|mjs|cjs)$/.test(filename)) return "typescript";
 
-  if (tone === "yaml-frontmatter") {
-    if (line === "---") return <span className="text-[#6a737d]">{line}</span>;
-    const colon = line.indexOf(":");
-    if (colon > 0) {
-      return (
-        <>
-          <span className="text-[#79b8ff]">{line.slice(0, colon)}</span>
-          <span className="text-[#6a737d]">:</span>
-          <span className="text-[#9ecbff]">{line.slice(colon + 1)}</span>
-        </>
-      );
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      JSON.parse(text);
+      return "json";
+    } catch {
+      // fall through
     }
   }
 
-  if (tone === "markdown" || tone === "yaml-frontmatter") {
-    if (line.startsWith("#")) {
-      const match = line.match(/^(#+)\s+(.*)$/);
-      if (match) {
-        return (
-          <>
-            <span className="text-[#6a737d]">{match[1]} </span>
-            <span className="text-[#e6edf3]">{match[2]}</span>
-          </>
-        );
-      }
-    }
-    if (line.startsWith("- ")) {
-      return (
-        <>
-          <span className="text-[#6a737d]">- </span>
-          <span>{line.slice(2)}</span>
-        </>
-      );
-    }
-    if (line.startsWith("[") && line.includes("]")) {
-      return <span className="text-[#d4a574]">{line}</span>;
-    }
-  }
-
-  if (tone === "code") {
-    if (line.trimStart().startsWith("//") || line.trimStart().startsWith("#")) {
-      return <span className="text-[#6a737d]">{line}</span>;
-    }
-    if (line.includes("function ") || line.includes("const ") || line.includes("import ")) {
-      return <span className="text-[#79b8ff]">{line}</span>;
-    }
-  }
-
-  return line;
+  if (tone === "code") return "typescript";
+  if (tone === "markdown" || tone === "yaml-frontmatter") return "markdown";
+  return "plain";
 }
 
 interface EditorDocument {

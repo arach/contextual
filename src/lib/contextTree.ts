@@ -218,10 +218,13 @@ export function findContextNode(root: ContextTreeNode, id: string): ContextTreeN
   return null;
 }
 
+export const CONTEXT_OVERVIEW_NODE_ID = "context:overview";
+
 export function defaultContextNodeId(root: ContextTreeNode): string {
+  if (findContextNode(root, CONTEXT_OVERVIEW_NODE_ID)) {
+    return CONTEXT_OVERVIEW_NODE_ID;
+  }
   const flat = flattenContextTree(root);
-  const firstAtom = flat.find((node) => node.kind === "atom");
-  if (firstAtom) return firstAtom.id;
   return flat.find((node) => node.kind === "overview")?.id ?? root.id;
 }
 

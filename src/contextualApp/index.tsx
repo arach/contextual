@@ -10,6 +10,8 @@ import { AppContent } from "@/contextualApp/slots/AppContent";
 import { AppLeftPanel } from "@/contextualApp/slots/AppLeftPanel";
 import { AppInspector } from "@/contextualApp/slots/AppInspector";
 import { buildManifest } from "@/lib/derive";
+import { adjacentSessionId, exploreSessionNavIds } from "@/lib/exploreNavOrder";
+import { loadPhaseColor, loadPhaseLabel } from "@/lib/sessionLoadPhase";
 import { useCommands as useThreadCommands } from "@/state/useCommands";
 
 function useCommands(): CommandOption[] {
@@ -31,6 +33,26 @@ function useCommands(): CommandOption[] {
 
     if (app.mode === "analysis") {
       modeCommands.push(
+        {
+          id: "contextual:explore-next-session",
+          label: "Next explore session",
+          shortcut: "J",
+          action: () => {
+            const ids = exploreSessionNavIds(app.explore.catalogEntries, app.explore.pinnedPaths);
+            const next = adjacentSessionId(ids, app.explore.activeId, 1);
+            if (next) app.explore.setActiveId(next);
+          },
+        },
+        {
+          id: "contextual:explore-prev-session",
+          label: "Previous explore session",
+          shortcut: "K",
+          action: () => {
+            const ids = exploreSessionNavIds(app.explore.catalogEntries, app.explore.pinnedPaths);
+            const prev = adjacentSessionId(ids, app.explore.activeId, -1);
+            if (prev) app.explore.setActiveId(prev);
+          },
+        },
         {
           id: "contextual:reload-sessions",
           label: "Reload Session Corpus",
@@ -65,7 +87,10 @@ function useStatus(): { label: string; color: StatusColor } {
     return { label: `packages · ${designer.active.name}`, color: "neutral" };
   }
 
-  if (explore.loading) return { label: "loading sessions", color: "amber" };
+  const phaseLabel = loadPhaseLabel(explore.loadPhase);
+  if (phaseLabel) {
+    return { label: phaseLabel, color: loadPhaseColor(explore.loadPhase) };
+  }
   if (explore.error) return { label: "session error", color: "red" };
   const session = explore.active;
   if (!session) return { label: "no session selected", color: "amber" };
@@ -81,7 +106,7 @@ export const contextualApp: HudsonApp = {
   agentContext:
     "Contextual inspects agent transcripts. Buckets and window packing are Contextual's proprietary model, not provider ground truth. Atoms are verbatim from source unless marked source-clipped.",
 
-  leftPanel: { title: "Navigation", icon: createElement(Radio, { size: 12 }) },
+  leftPanel: { title: "Find", icon: createElement(Radio, { size: 12 }) },
   rightPanel: { title: "Inspector", icon: createElement(SlidersHorizontal, { size: 12 }) },
 
   Provider: ContextualProvider,

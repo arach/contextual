@@ -1,8 +1,7 @@
 "use client";
 
-import { AppShell } from "hudsonkit/app-shell";
-import { contextualApp } from "@/contextualApp";
+import { StandaloneAppShell } from "@/contextualApp/StandaloneAppShell";
 
 export default function HomePage() {
-  return <AppShell app={contextualApp} assistant={false} />;
+  return <StandaloneAppShell />;
 }

@@ -1,4 +1,4 @@
-import type { SessionAnalysis } from "@/lib/sessionAnalysis";
+import type { SessionAnalysis, SessionCatalogEntry } from "@/lib/sessionAnalysis";
 
 /** Sessions you were in recently — best starting points in Explore. */
 export function recentFamiliarSessions(
@@ -13,6 +13,25 @@ export function recentFamiliarSessions(
 
 export function sortSessionsByObserved(sessions: SessionAnalysis[]): SessionAnalysis[] {
   return [...sessions].sort(
+    (a, b) => Date.parse(b.observedAt) - Date.parse(a.observedAt),
+  );
+}
+
+export function pickDefaultCatalogEntry(
+  entries: SessionCatalogEntry[],
+): SessionCatalogEntry | null {
+  if (!entries.length) return null;
+  return sortCatalogByObserved(entries)[0] ?? null;
+}
+
+export function pickDefaultCatalogEntryId(entries: SessionCatalogEntry[]): string {
+  return pickDefaultCatalogEntry(entries)?.id ?? "";
+}
+
+export function sortCatalogByObserved(
+  entries: SessionCatalogEntry[],
+): SessionCatalogEntry[] {
+  return [...entries].sort(
     (a, b) => Date.parse(b.observedAt) - Date.parse(a.observedAt),
   );
 }

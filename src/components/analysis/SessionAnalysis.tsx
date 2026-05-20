@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import { SidePanel } from "hudsonkit/chrome";
-import { BarChart3, GitBranch, Layers, ListTree, Pin, PinOff, PieChart, Search, Send, Terminal } from "lucide-react";
+import { BarChart3, ChevronDown, ChevronRight, GitBranch, Layers, ListTree, Pin, PinOff, PieChart, Search, Send, Terminal } from "lucide-react";
 
 import {
   ANALYSIS_THRESHOLDS,
@@ -24,20 +24,18 @@ import {
 } from "@/lib/sessionAnalysis";
 import {
   askSessionAnalysis,
-  fetchSessionAnalysis,
   fetchSessionCatalog,
   pullSessionAnalysis,
 } from "@/lib/sessionAnalysisClient";
 import {
   formatObservedRelative,
-  pickDefaultExploreSessionId,
   recentFamiliarSessions,
+  sortCatalogByObserved,
 } from "@/lib/sessionExplore";
 import {
   mergeExploreSessions,
   pinPath,
   readPinnedPaths,
-  sessionsForPinnedPaths,
   unpinPath,
   writePinnedPaths,
 } from "@/lib/sessionExploreNav";
@@ -45,14 +43,26 @@ import { sessionNavDetail, sessionIdSuffix, sessionNavMeta } from "@/lib/session
 import { atomsInWindowOrder, splitWindowSections } from "@/lib/sessionWindow";
 import { ContextViewer } from "@/components/analysis/ContextViewer";
 import {
+  ExploreInspectorSkeleton,
+  ExploreLoadPhaseBanner,
+  ExploreNavSkeleton,
+  ExploreWorkbenchSkeleton,
+} from "@/components/analysis/ExploreLoadSkeleton";
+import {
   buildContextTree,
   defaultContextNodeId,
   findContextNode,
 } from "@/lib/contextTree";
+import type { LoadPhase } from "@/lib/sessionLoadPhase";
+import { isInitialLoad } from "@/lib/sessionLoadPhase";
+import { useProgressiveSessionLoad } from "@/hooks/useProgressiveSessionLoad";
+import { exploreSessionNavEntries } from "@/lib/exploreNavOrder";
 
 interface AnalysisState {
   data: SessionAnalysisResponse | null;
+  catalogEntries: SessionCatalogEntry[];
   sessions: SessionAnalysis[];
+  loadPhase: LoadPhase;
   loading: boolean;
   error: string | null;
   activeId: string;
@@ -70,73 +80,37 @@ interface AnalysisState {
   toggleBlock: (id: string) => void;
   blockDrafts: Record<string, string>;
   setBlockDraft: (id: string, body: string) => void;
+  contextNodeDrafts: Record<string, string>;
+  setContextNodeDraft: (nodeId: string, body: string) => void;
   selectedContextNodeId: string;
   setSelectedContextNodeId: (id: string) => void;
   active: SessionAnalysis | null;
   activeSnapshot: ThresholdSnapshot | null;
   selectedInsight: BucketInsight | null;
+  isSessionReady: (id: string) => boolean;
 }
 
 export function useSessionAnalysisState(): AnalysisState {
-  const [data, setData] = useState<SessionAnalysisResponse | null>(null);
-  const [pulledSessions, setPulledSessions] = useState<SessionAnalysis[]>([]);
   const [pinnedPaths, setPinnedPaths] = useState(readPinnedPaths);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [activeId, setActiveId] = useState("");
+  const progressive = useProgressiveSessionLoad(pinnedPaths);
   const [threshold, setThreshold] = useState<number>(150_000);
   const [selectedBucket, setSelectedBucket] = useState<ContextBucketId>("codebase");
   const [questionId, setQuestionId] = useState<AnalysisQuestionId>("shape");
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
   const [blockDrafts, setBlockDrafts] = useState<Record<string, string>>({});
+  const [contextNodeDrafts, setContextNodeDrafts] = useState<Record<string, string>>({});
   const [selectedContextNodeId, setSelectedContextNodeId] = useState("");
 
-  const sessions = useMemo(
-    () => mergeExploreSessions(data?.sessions ?? [], pulledSessions),
-    [data?.sessions, pulledSessions],
+  const sessions = progressive.sessions;
+  const readySessionIds = useMemo(
+    () => new Set(sessions.map((session) => session.id)),
+    [sessions],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetchSessionAnalysis()
-      .then((next) => {
-        if (cancelled) return;
-        setData(next);
-        setError(null);
-        setActiveId((current) => current || pickDefaultExploreSessionId(next.sessions));
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!data || !pinnedPaths.length) return;
-    const corpusPaths = new Set(data.sessions.map((session) => session.path));
-    const missing = pinnedPaths.filter((path) => !corpusPaths.has(path));
-    if (!missing.length) return;
-
-    let cancelled = false;
-    pullSessionAnalysis({ paths: missing })
-      .then((response) => {
-        if (cancelled || !response.sessions.length) return;
-        setPulledSessions((current) => mergeExploreSessions(current, response.sessions));
-      })
-      .catch(() => {
-        // pinned paths may be stale; keep nav entry until user removes
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [data, pinnedPaths]);
+  const isSessionReady = useCallback(
+    (id: string) => readySessionIds.has(id),
+    [readySessionIds],
+  );
 
   const pinByPath = useCallback(
     async (path: string) => {
@@ -146,16 +120,16 @@ export function useSessionAnalysisState(): AnalysisState {
 
       const known = sessions.find((session) => session.path === path);
       if (known) {
-        setActiveId(known.id);
+        progressive.setActiveId(known.id);
         return;
       }
 
       const response = await pullSessionAnalysis({ path });
       if (!response.sessions.length) return;
-      setPulledSessions((current) => mergeExploreSessions(current, response.sessions));
-      setActiveId(response.sessions[0]!.id);
+      progressive.ingestSessions(response.sessions);
+      progressive.setActiveId(response.sessions[0]!.id);
     },
-    [pinnedPaths, sessions],
+    [pinnedPaths, sessions, progressive],
   );
 
   const unpinByPath = useCallback((path: string) => {
@@ -165,8 +139,9 @@ export function useSessionAnalysisState(): AnalysisState {
   }, [pinnedPaths]);
 
   const active = useMemo(
-    () => sessions.find((session) => session.id === activeId) ?? sessions[0] ?? null,
-    [activeId, sessions],
+    () =>
+      sessions.find((session) => session.id === progressive.activeId) ?? sessions[0] ?? null,
+    [progressive.activeId, sessions],
   );
 
   const activeSnapshot = useMemo(() => {
@@ -207,6 +182,7 @@ export function useSessionAnalysisState(): AnalysisState {
     setBlockDrafts(
       Object.fromEntries(active.recipeDraft.blocks.map((block) => [block.id, block.body])),
     );
+    setContextNodeDrafts({});
   }, [active?.recipeDraft.id]);
 
   const toggleBlock = (id: string) => {
@@ -219,13 +195,27 @@ export function useSessionAnalysisState(): AnalysisState {
     setBlockDrafts((current) => ({ ...current, [id]: body }));
   };
 
+  const setContextNodeDraft = useCallback((nodeId: string, body: string) => {
+    setContextNodeDrafts((current) => ({ ...current, [nodeId]: body }));
+  }, []);
+
+  const loading = isInitialLoad(progressive.loadPhase);
+
   return {
-    data,
+    data: sessions.length
+      ? {
+          generatedAt: new Date().toISOString(),
+          thresholds: [...ANALYSIS_THRESHOLDS],
+          sessions,
+        }
+      : null,
+    catalogEntries: progressive.catalogEntries,
     sessions,
+    loadPhase: progressive.loadPhase,
     loading,
-    error,
-    activeId: active?.id ?? activeId,
-    setActiveId,
+    error: progressive.error,
+    activeId: active?.id ?? progressive.activeId,
+    setActiveId: progressive.setActiveId,
     pinnedPaths,
     pinByPath,
     unpinByPath,
@@ -239,11 +229,14 @@ export function useSessionAnalysisState(): AnalysisState {
     toggleBlock,
     blockDrafts,
     setBlockDraft,
+    contextNodeDrafts,
+    setContextNodeDraft,
     selectedContextNodeId,
     setSelectedContextNodeId: setSelectedContextNode,
     active,
     activeSnapshot,
     selectedInsight,
+    isSessionReady,
   };
 }
 
@@ -274,14 +267,14 @@ export function AnalysisChrome({
     <>
       <SidePanel
         side="left"
-        title="SESSION ANALYSIS"
+        title="FIND"
         icon={<BarChart3 size={12} className="text-[var(--hg-accent)]" />}
         width={leftWidth}
         onResizeStart={onResizeLeft}
         isCollapsed={leftCollapsed}
         onToggleCollapse={onToggleLeft}
       >
-        <SessionList state={state} />
+        <ExploreSessionFinder state={state} />
       </SidePanel>
 
       <SidePanel
@@ -302,78 +295,160 @@ export function AnalysisChrome({
 export type ExploreAnalysisState = AnalysisState;
 
 export function ExploreSessionList({ state }: { state: AnalysisState }) {
-  return <SessionList state={state} />;
+  return <ExploreSessionFinder state={state} />;
 }
 
 export function ExploreAllocationInspector({ state }: { state: AnalysisState }) {
   return <AllocationInspector state={state} />;
 }
 
-function SessionList({ state }: { state: AnalysisState }) {
-  if (state.loading) return <PanelEmpty label="loading session corpus" />;
+/** Search + pin — lives in the Hudson left panel when a session is already selected. */
+export function ExploreSessionFinder({ state }: { state: AnalysisState }) {
   if (state.error) return <PanelEmpty label={state.error} tone="warn" />;
-  if (!state.sessions.length) return <PanelEmpty label="no sessions found" />;
-
-  const NAV_LIMIT = 28;
-  const pinned = sessionsForPinnedPaths(state.sessions, state.pinnedPaths);
-  const pinnedPaths = new Set(state.pinnedPaths);
-  const rest = state.sessions
-    .filter((session) => !pinnedPaths.has(session.path))
-    .sort((a, b) => Date.parse(b.observedAt) - Date.parse(a.observedAt));
-  const visible = rest.slice(0, NAV_LIMIT);
-  const hiddenCount = rest.length - visible.length;
 
   return (
-    <div className="px-3 py-3 overflow-auto">
+    <div
+      id="explore-panel-sessions"
+      tabIndex={0}
+      className="overflow-auto px-3 py-3 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--hg-accent)]"
+      aria-label="Find sessions"
+    >
+      <ExploreLoadPhaseBanner phase={state.loadPhase} />
       <SessionSearchPanel state={state} />
-      {pinned.length > 0 && (
-        <section className="mb-5">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="hg-section-label">Pinned</span>
-            <span className="hg-pill accent">{pinned.length}</span>
-          </div>
-          <div className="space-y-1.5">
-            {pinned.map((session) => (
-              <SessionListCard
-                key={session.id}
-                session={session}
-                isActive={state.activeId === session.id}
-                onSelect={() => state.setActiveId(session.id)}
-                onUnpin={() => state.unpinByPath(session.path)}
-                showPin
-              />
-            ))}
-          </div>
-        </section>
-      )}
-      {visible.length > 0 && (
-        <section className="mb-4">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="hg-section-label">Sessions</span>
-            <span className="hg-pill">{rest.length}</span>
-          </div>
-          <div className="space-y-1.5">
-            {visible.map((session) => (
-              <SessionListCard
-                key={session.id}
-                session={session}
-                isActive={state.activeId === session.id}
-                onSelect={() => state.setActiveId(session.id)}
-                isPinned={state.pinnedPaths.includes(session.path)}
-                onPin={() => void state.pinByPath(session.path)}
-                onUnpin={() => state.unpinByPath(session.path)}
-              />
-            ))}
-          </div>
-          {hiddenCount > 0 && (
-            <p className="mt-2 px-1 text-[10px] leading-snug text-[var(--hg-muted)]">
-              {hiddenCount} older — search or pin to pull them in.
+      <ExploreSessionPinnedSection state={state} />
+    </div>
+  );
+}
+
+/** Collapsible session switcher — sits above the context file tree in the workbench. */
+export function ExploreSessionStrip({ state }: { state: AnalysisState }) {
+  const [open, setOpen] = useState(false);
+  const model = buildSessionNavModel(state);
+  const activeEntry =
+    model.navEntries.find((entry) => entry.id === state.activeId) ??
+    state.catalogEntries.find((entry) => entry.id === state.activeId);
+
+  if (state.loading && !state.catalogEntries.length) {
+    return (
+      <div className="border-b border-[var(--hg-line)] px-3 py-2">
+        <div className="hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)]">
+          loading sessions…
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-b border-[var(--hg-line)]">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[var(--hg-bg-tint)]"
+        aria-expanded={open}
+      >
+        {open ? (
+          <ChevronDown size={12} className="shrink-0 text-[var(--hg-muted)]" />
+        ) : (
+          <ChevronRight size={12} className="shrink-0 text-[var(--hg-muted)]" />
+        )}
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--hg-ink)]">
+          {activeEntry?.title ?? "Sessions"}
+        </span>
+        <span className="hg-pill shrink-0">{model.navEntries.length}</span>
+      </button>
+      {open && (
+        <div className="max-h-[168px] space-y-1 overflow-auto border-t border-[var(--hg-line)] px-2 py-2">
+          {model.navEntries.map((entry) => model.renderNavItem(entry, { compact: true }))}
+          {model.hiddenCount > 0 && (
+            <p className="px-1 py-1 text-[10px] leading-snug text-[var(--hg-muted)]">
+              {model.hiddenCount} older — use Find in the left panel.
             </p>
           )}
-        </section>
+        </div>
       )}
     </div>
   );
+}
+
+function ExploreSessionPinnedSection({ state }: { state: AnalysisState }) {
+  const model = buildSessionNavModel(state);
+  if (!state.pinnedPaths.length) return null;
+
+  return (
+    <section className="mt-4">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="hg-section-label">Pinned</span>
+        <span className="hg-pill accent">{state.pinnedPaths.length}</span>
+      </div>
+      <div className="space-y-1.5">
+        {state.pinnedPaths.map((path) => {
+          const entry = model.catalogByPath.get(path);
+          if (entry) return model.renderNavItem(entry);
+          const session = model.sessionByPath.get(path);
+          if (!session) return null;
+          return (
+            <SessionListCard
+              key={path}
+              session={session}
+              isActive={state.activeId === session.id}
+              onSelect={() => state.setActiveId(session.id)}
+              onUnpin={() => state.unpinByPath(session.path)}
+              showPin
+            />
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function buildSessionNavModel(state: AnalysisState) {
+  const NAV_LIMIT = 28;
+  const pinnedPaths = new Set(state.pinnedPaths);
+  const catalogByPath = new Map(state.catalogEntries.map((entry) => [entry.path, entry]));
+  const sessionByPath = new Map(state.sessions.map((session) => [session.path, session]));
+  const navEntries = exploreSessionNavEntries(state.catalogEntries, state.pinnedPaths, NAV_LIMIT);
+  const restEntries = navEntries.filter((entry) => !pinnedPaths.has(entry.path));
+  const hiddenCount = Math.max(
+    0,
+    sortCatalogByObserved(state.catalogEntries).filter((entry) => !pinnedPaths.has(entry.path))
+      .length - restEntries.length,
+  );
+
+  const renderNavItem = (entry: SessionCatalogEntry, options?: { compact?: boolean }) => {
+    const session = sessionByPath.get(entry.path);
+    const ready = state.isSessionReady(entry.id);
+    const itemKey = entry.path;
+    if (session && ready) {
+      return (
+        <SessionListCard
+          key={itemKey}
+          session={session}
+          compact={options?.compact}
+          isActive={state.activeId === entry.id}
+          onSelect={() => state.setActiveId(entry.id)}
+          isPinned={state.pinnedPaths.includes(entry.path)}
+          onPin={() => void state.pinByPath(entry.path)}
+          onUnpin={() => state.unpinByPath(entry.path)}
+        />
+      );
+    }
+    return (
+      <CatalogNavCard
+        key={itemKey}
+        entry={entry}
+        compact={options?.compact}
+        isActive={state.activeId === entry.id}
+        pending={!ready}
+        onSelect={() => state.setActiveId(entry.id)}
+        isPinned={state.pinnedPaths.includes(entry.path)}
+        onPin={() => void state.pinByPath(entry.path)}
+        onUnpin={() => state.unpinByPath(entry.path)}
+      />
+    );
+  };
+
+  return { catalogByPath, sessionByPath, navEntries, hiddenCount, renderNavItem };
 }
 
 function SessionSearchPanel({ state }: { state: AnalysisState }) {
@@ -518,6 +593,75 @@ function SessionSearchPanel({ state }: { state: AnalysisState }) {
   );
 }
 
+function CatalogNavCard({
+  entry,
+  isActive,
+  pending,
+  onSelect,
+  showPin = false,
+  isPinned = false,
+  onPin,
+  onUnpin,
+  compact = false,
+}: {
+  entry: SessionCatalogEntry;
+  isActive: boolean;
+  pending: boolean;
+  onSelect: () => void;
+  showPin?: boolean;
+  isPinned?: boolean;
+  onPin?: () => void;
+  onUnpin?: () => void;
+  compact?: boolean;
+}) {
+  const pinAction = showPin || isPinned ? onUnpin : onPin;
+  const pinned = showPin || isPinned;
+
+  return (
+    <div
+      data-explore-session-id={entry.id}
+      className={
+        "w-full rounded-[2px] border transition-colors " +
+        (isActive
+          ? "border-[var(--hg-accent)] bg-[var(--hg-accent-tint)]"
+          : "border-[var(--hg-line)] bg-[var(--hg-surface)] hover:border-[var(--hg-hairline)]")
+      }
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        className={"w-full text-left " + (compact ? "px-2 py-1.5" : "px-2.5 py-2")}
+      >
+        <div className="flex items-center gap-2 hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)]">
+          <span>
+            {entry.project} · {entry.source} · {formatObservedRelative(entry.observedAt)}
+          </span>
+          {pending && <span className="text-[var(--hg-accent)]">pending</span>}
+        </div>
+        <div className="mt-1 text-[12px] leading-snug text-[var(--hg-ink)] line-clamp-2">
+          {entry.title}
+        </div>
+      </button>
+      {pinAction && (
+        <div className="flex justify-end border-t border-[var(--hg-line)] px-2 py-0.5">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              pinAction();
+            }}
+            className="inline-flex items-center gap-1 rounded-[2px] px-1.5 py-0.5 hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)] hover:text-[var(--hg-ink)]"
+            aria-label={pinned ? "Unpin session" : "Pin session"}
+          >
+            {pinned ? <PinOff size={10} /> : <Pin size={10} />}
+            {pinned ? "unpin" : "pin"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SessionListCard({
   session,
   isActive,
@@ -526,6 +670,7 @@ function SessionListCard({
   isPinned = false,
   onPin,
   onUnpin,
+  compact = false,
 }: {
   session: SessionAnalysis;
   isActive: boolean;
@@ -534,12 +679,14 @@ function SessionListCard({
   isPinned?: boolean;
   onPin?: () => void;
   onUnpin?: () => void;
+  compact?: boolean;
 }) {
   const pinAction = showPin || isPinned ? onUnpin : onPin;
   const pinned = showPin || isPinned;
 
   return (
     <div
+      data-explore-session-id={session.id}
       className={
         "w-full rounded-[2px] border transition-colors " +
         (isActive
@@ -547,7 +694,11 @@ function SessionListCard({
           : "border-[var(--hg-line)] bg-[var(--hg-surface)] hover:border-[var(--hg-hairline)]")
       }
     >
-      <button type="button" onClick={onSelect} className="w-full px-2.5 py-2 text-left">
+      <button
+        type="button"
+        onClick={onSelect}
+        className={"w-full text-left " + (compact ? "px-2 py-1.5" : "px-2.5 py-2")}
+      >
         <div className="hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)]">
           {sessionNavMeta(session)}
           {session.goodContext ? " · example" : null}
@@ -579,11 +730,22 @@ function SessionListCard({
 function AllocationInspector({ state }: { state: AnalysisState }) {
   const session = state.active;
   const snapshot = state.activeSnapshot;
-  if (!session || !snapshot) return <PanelEmpty label="select a session" />;
+
+  if (!session || !snapshot) {
+    if (state.loadPhase.stage === "active" || state.loadPhase.stage === "corpus") {
+      return <ExploreInspectorSkeleton />;
+    }
+    return <PanelEmpty label="select a session" />;
+  }
   const budget = session.engineBudget || DEFAULT_ENGINE_BUDGET;
 
   return (
-    <div className="px-4 py-4 overflow-auto">
+    <div
+      id="explore-panel-inspector"
+      tabIndex={0}
+      className="overflow-auto px-4 py-4 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--hg-accent)]"
+      aria-label="Allocation inspector"
+    >
       <div className="mb-4 rounded-[2px] border border-[var(--hg-line)] bg-[var(--hg-surface)] p-3">
         <div className="mb-2 flex items-center justify-between">
           <span className="hg-section-label">engine footprint</span>
@@ -652,29 +814,29 @@ function AllocationInspector({ state }: { state: AnalysisState }) {
 
 export function SessionAnalysisWorkbench({
   state,
-  sessionsPanelCollapsed,
-  onToggleSessionsPanel,
   showContextConsole = false,
+  onOpenTree,
 }: {
   state: AnalysisState;
-  sessionsPanelCollapsed?: boolean;
-  onToggleSessionsPanel?: () => void;
   showContextConsole?: boolean;
+  onOpenTree?: () => void;
 }) {
   const session = state.active;
   const snapshot = state.activeSnapshot;
   const [consoleOpen, setConsoleOpen] = useState(true);
-
-  if (state.loading) {
-    return <WorkbenchShell title="SESSION ANALYSIS" meta="loading" />;
-  }
+  const activeEntry = state.catalogEntries.find((entry) => entry.id === state.activeId);
 
   if (state.error) {
     return <WorkbenchShell title="SESSION ANALYSIS" meta={state.error} tone="warn" />;
   }
 
   if (!session || !snapshot) {
-    return <WorkbenchShell title="SESSION ANALYSIS" meta="no session selected" />;
+    return (
+      <>
+        <ExploreLoadPhaseBanner phase={state.loadPhase} />
+        <ExploreWorkbenchSkeleton title={activeEntry?.title ?? "SESSION ANALYSIS"} />
+      </>
+    );
   }
 
   return (
@@ -685,8 +847,11 @@ export function SessionAnalysisWorkbench({
         selectedNodeId={state.selectedContextNodeId}
         onSelectNode={state.setSelectedContextNodeId}
         blockDrafts={state.blockDrafts}
-        sessionsPanelCollapsed={sessionsPanelCollapsed}
-        onToggleSessionsPanel={onToggleSessionsPanel}
+        contextNodeDrafts={state.contextNodeDrafts}
+        onBlockDraftChange={state.setBlockDraft}
+        onContextNodeDraftChange={state.setContextNodeDraft}
+        exploreState={state}
+        onOpenTree={onOpenTree}
       />
 
       {showContextConsole && (

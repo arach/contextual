@@ -267,11 +267,7 @@ export function App() {
         ) : mode === "designer" ? (
           <DesignerWorkbench state={designer} />
         ) : (
-          <SessionAnalysisWorkbench
-            state={analysis}
-            sessionsPanelCollapsed={leftCollapsed}
-            onToggleSessionsPanel={() => setLeftCollapsed((c) => !c)}
-          />
+          <SessionAnalysisWorkbench state={analysis} />
         )}
       </div>
     </Frame>
