@@ -1,6 +1,8 @@
 import { bucketMeta, formatAnalysisTokens, type ContextAtom, type ContextBlock, type ContextBucketId, type ContextSlice, type SessionAnalysis, type ThresholdSnapshot } from "@/lib/sessionAnalysis";
 import { atomsInWindowOrder, splitWindowSections } from "@/lib/sessionWindow";
 
+export type ContextViewMode = "raw" | "contextual";
+
 export type ContextTreeNodeKind = "folder" | "overview" | "atom" | "slice" | "block";
 
 export interface ContextTreeNode {
@@ -26,21 +28,37 @@ function slug(text: string, max = 28): string {
     .slice(0, max) || "item";
 }
 
-function atomFileName(atom: ContextAtom, index: number): string {
-  return `${String(index).padStart(3, "0")}-${slug(atom.label)}.${atom.bucket}`;
+function atomFileName(atom: ContextAtom, index: number, mode: ContextViewMode = "contextual"): string {
+  const base = `${String(index).padStart(3, "0")}-${slug(atom.label)}`;
+  return mode === "raw" ? `${base}.atom` : `${base}.${atom.bucket}`;
 }
 
-function atomLeaf(_session: SessionAnalysis, atom: ContextAtom, index: number, pathPrefix: string[]): ContextTreeNode {
+function atomLeaf(
+  _session: SessionAnalysis,
+  atom: ContextAtom,
+  index: number,
+  pathPrefix: string[],
+  mode: ContextViewMode = "contextual",
+): ContextTreeNode {
+  const name = atomFileName(atom, index, mode);
   return {
     id: `atom:${atom.id}`,
-    name: atomFileName(atom, index),
-    path: [...pathPrefix, atomFileName(atom, index)],
+    name,
+    path: [...pathPrefix, name],
     kind: "atom",
     atomId: atom.id,
     bucket: atom.bucket,
     tokens: atom.tokens,
     detail: atom.summary,
   };
+}
+
+function atomsInMessageOrder(session: SessionAnalysis): ContextAtom[] {
+  return [...session.atoms].sort((a, b) => {
+    const byMessage = a.messageIndex - b.messageIndex;
+    if (byMessage !== 0) return byMessage;
+    return (a.lineNumber ?? 0) - (b.lineNumber ?? 0);
+  });
 }
 
 function sliceFolder(
@@ -83,6 +101,46 @@ function blockLeaf(block: ContextBlock, pathPrefix: string[]): ContextTreeNode {
     tokens: block.tokens,
     detail: block.summary,
   };
+}
+
+export function buildRawContextTree(session: SessionAnalysis): ContextTreeNode {
+  const ordered = atomsInMessageOrder(session);
+  const corpusTokens = ordered.reduce((sum, atom) => sum + atom.tokens, 0);
+  const transcriptPath = ["context", "transcript"];
+
+  return {
+    id: "context:root",
+    name: "context",
+    path: ["context"],
+    kind: "folder",
+    children: [
+      {
+        id: "context:overview",
+        name: "session.md",
+        path: ["context", "session.md"],
+        kind: "overview",
+        detail: session.summary,
+      },
+      {
+        id: "context:transcript",
+        name: "transcript",
+        path: transcriptPath,
+        kind: "folder",
+        detail: `${ordered.length} atoms · ${formatAnalysisTokens(corpusTokens)}`,
+        children: ordered.map((atom, index) =>
+          atomLeaf(session, atom, index + 1, transcriptPath, "raw"),
+        ),
+      },
+    ],
+  };
+}
+
+export function buildContextTreeForMode(
+  session: SessionAnalysis,
+  snapshot: ThresholdSnapshot,
+  mode: ContextViewMode,
+): ContextTreeNode {
+  return mode === "raw" ? buildRawContextTree(session) : buildContextTree(session, snapshot);
 }
 
 export function buildContextTree(session: SessionAnalysis, snapshot: ThresholdSnapshot): ContextTreeNode {
@@ -273,7 +331,11 @@ export function collectMatchContextPaths(root: ContextTreeNode, query: string): 
   return paths;
 }
 
-export function collectExpandedContextPaths(root: ContextTreeNode): Set<string> {
+export function collectExpandedContextPaths(root: ContextTreeNode, mode: ContextViewMode = "contextual"): Set<string> {
+  if (mode === "raw") {
+    return new Set(["context:root", "context:transcript"]);
+  }
+
   return new Set([
     "context:root",
     "context:window",
@@ -286,4 +348,19 @@ export function collectExpandedContextPaths(root: ContextTreeNode): Set<string> 
       .filter((node) => node.kind === "folder" && node.id.startsWith("bucket:"))
       .map((node) => node.id),
   ]);
+}
+
+export function mapContextNodeIdForMode(
+  selectedId: string,
+  fromTree: ContextTreeNode,
+  toTree: ContextTreeNode,
+): string {
+  const fromNode = findContextNode(fromTree, selectedId);
+  if (!fromNode) return defaultContextNodeId(toTree);
+  if (fromNode.kind === "overview") return CONTEXT_OVERVIEW_NODE_ID;
+  if (fromNode.kind === "atom" && fromNode.atomId) {
+    const atomNodeId = `atom:${fromNode.atomId}`;
+    if (findContextNode(toTree, atomNodeId)) return atomNodeId;
+  }
+  return defaultContextNodeId(toTree);
 }

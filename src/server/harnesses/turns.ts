@@ -222,12 +222,14 @@ function isClaudeToolResultOnly(content: unknown): boolean {
 }
 
 function compactBoundaryFromSystem(line: AtRestLine): CompactBoundary | null {
+  const rec = line.native as Record<string, unknown>;
   const text = JSON.stringify(line.native);
-  if (!/compact[_-]?boundary/i.test(text)) return null;
+  if (rec.subtype !== "compact_boundary" && !/compact[_-]?boundary/i.test(text)) return null;
+  const metadata = rec.compactMetadata as Record<string, unknown> | undefined;
   return {
     source: line.source,
-    preTokens: firstNumberFor(text, /pre[^0-9]{0,24}(\d{3,})/i),
-    postTokens: firstNumberFor(text, /post[^0-9]{0,24}(\d{3,})/i),
+    preTokens: numberField(metadata, "preTokens") ?? firstNumberFor(text, /pre[^0-9]{0,24}(\d{3,})/i),
+    postTokens: numberField(metadata, "postTokens") ?? firstNumberFor(text, /post[^0-9]{0,24}(\d{3,})/i),
     summary: nativeMessageText("claude", line.native).slice(0, 1_200) || undefined,
   };
 }

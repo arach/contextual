@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import {
+  AlertTriangle,
   ChevronDown,
   ChevronRight,
   FileCode2,
@@ -15,6 +16,13 @@ import {
 import { CodeEditor, type DocumentLanguage } from "hudsonkit/controls";
 import { usePersistentState } from "hudsonkit";
 
+import { ContextBudgetStrip } from "@/components/analysis/ContextBudgetStrip";
+import { ContextBreadcrumbs } from "@/components/analysis/ContextBreadcrumbs";
+import { ContextAsOfPanel } from "@/components/analysis/ContextAsOfPanel";
+import { CurationRollup } from "@/components/analysis/CurationRollup";
+import { CurationPill, CurateModeToggle } from "@/components/analysis/CurationPill";
+import { useCuration, type CurationApi } from "@/lib/contextCuration";
+
 import {
   bucketMeta,
   formatAnalysisTokens,
@@ -25,7 +33,7 @@ import {
   type ThresholdSnapshot,
 } from "@/lib/sessionAnalysis";
 import {
-  buildContextTree,
+  buildContextTreeForMode,
   collectExpandedContextPaths,
   collectMatchContextPaths,
   defaultContextNodeId,
@@ -33,6 +41,7 @@ import {
   findContextNode,
   flattenContextTree,
   type ContextTreeNode,
+  type ContextViewMode,
 } from "@/lib/contextTree";
 import {
   adjacentVisibleNodeId,
@@ -44,10 +53,25 @@ import { EXPLORE_PANEL_IDS } from "@/lib/explorePanels";
 import { displaySessionTitle } from "@/lib/sessionLabel";
 import { sessionIdSuffix, sessionNavMeta } from "@/lib/sessionNavLabel";
 import { formatObservedRelative } from "@/lib/sessionExplore";
+import type {
+  AtRestLine,
+  ExploreContextMode,
+  ManifestPart,
+  ManifestTruth,
+  TurnReadyManifest,
+  TurnRecord,
+} from "@/lib/harnessContract";
 import {
-  ExploreSessionStrip,
-  type ExploreAnalysisState,
-} from "@/components/analysis/SessionAnalysis";
+  AT_REST_OVERVIEW_NODE_ID,
+  TURN_READY_OVERVIEW_NODE_ID,
+  buildAtRestTree,
+  buildTurnReadyTree,
+  turnLabel,
+  useHarnessAtRest,
+  useHarnessManifest,
+  useHarnessSessionKey,
+  useHarnessTurns,
+} from "@/lib/harnessExplore";
 
 const CONTEXT_SIDEBAR_DEFAULT = 260;
 const CONTEXT_SIDEBAR_MIN = 200;
@@ -62,7 +86,6 @@ interface ContextViewerProps {
   contextNodeDrafts: Record<string, string>;
   onBlockDraftChange: (blockId: string, body: string) => void;
   onContextNodeDraftChange: (nodeId: string, body: string) => void;
-  exploreState?: ExploreAnalysisState;
   onOpenTree?: () => void;
 }
 
@@ -75,7 +98,6 @@ export function ContextViewer({
   contextNodeDrafts,
   onBlockDraftChange,
   onContextNodeDraftChange,
-  exploreState,
   onOpenTree,
 }: ContextViewerProps) {
   const [sidebarWidth, setSidebarWidth] = usePersistentState(
@@ -112,30 +134,106 @@ export function ContextViewer({
     [sidebarWidth, setSidebarWidth],
   );
 
-  const tree = useMemo(() => buildContextTree(session, snapshot), [session, snapshot]);
+  const [mode, setMode] = usePersistentState<ExploreContextMode>(
+    "contextual.exploreContextMode",
+    "contextual",
+  );
+
+  const harnessKey = useHarnessSessionKey(session.path);
+  const atRest = useHarnessAtRest(mode === "at-rest" ? harnessKey.key : null);
+  const turns = useHarnessTurns(mode === "turn-ready" ? harnessKey.key : null);
+  const [selectedTurn, setSelectedTurn] = useState<"latest" | string>("latest");
+  const manifest = useHarnessManifest(
+    mode === "turn-ready" ? harnessKey.key : null,
+    selectedTurn,
+  );
+
+  const contextualTree = useMemo(
+    () => buildContextTreeForMode(session, snapshot, "contextual"),
+    [session, snapshot],
+  );
+
+  // Curation only meaningfully applies to the contextual tree (at-rest and
+  // turn-ready are logged data, read-only). The hook lives at the top level so
+  // its rollup can flow into the budget strip and the right rail.
+  const curate = useCuration({ sessionId: session.id, tree: contextualTree });
+  const atRestTreeData = useMemo(
+    () => buildAtRestTree(atRest.lines, atRest.totalLines),
+    [atRest.lines, atRest.totalLines],
+  );
+  const turnReadyTreeData = useMemo(
+    () => buildTurnReadyTree(manifest.manifest),
+    [manifest.manifest],
+  );
+
+  const tree =
+    mode === "contextual"
+      ? contextualTree
+      : mode === "at-rest"
+        ? atRestTreeData.tree
+        : turnReadyTreeData.tree;
+
+  const [atRestSelectedId, setAtRestSelectedId] = useState<string>(AT_REST_OVERVIEW_NODE_ID);
+  const [turnReadySelectedId, setTurnReadySelectedId] = useState<string>(
+    TURN_READY_OVERVIEW_NODE_ID,
+  );
+
+  const currentSelectedId =
+    mode === "contextual"
+      ? selectedNodeId
+      : mode === "at-rest"
+        ? atRestSelectedId
+        : turnReadySelectedId;
+
+  const setCurrentSelectedId = useCallback(
+    (id: string) => {
+      if (mode === "contextual") onSelectNode(id);
+      else if (mode === "at-rest") setAtRestSelectedId(id);
+      else setTurnReadySelectedId(id);
+    },
+    [mode, onSelectNode],
+  );
+
+  const defaultExpandedForMode = useCallback(
+    (root: ContextTreeNode): Set<string> => {
+      if (mode === "contextual") return collectExpandedContextPaths(root, "contextual");
+      if (mode === "at-rest") return new Set(["at-rest:root", "at-rest:lines"]);
+      return new Set(["turn-ready:root", "turn-ready:parts"]);
+    },
+    [mode],
+  );
+
   const [treeQuery, setTreeQuery] = useState("");
   const filteredTree = useMemo(
     () => (treeQuery.trim() ? filterContextTree(tree, treeQuery) : tree),
     [tree, treeQuery],
   );
-  const [expanded, setExpanded] = useState<Set<string>>(() => collectExpandedContextPaths(tree));
+  const [expanded, setExpanded] = useState<Set<string>>(() => defaultExpandedForMode(tree));
 
   useEffect(() => {
     setExpanded(
       treeQuery.trim()
         ? collectMatchContextPaths(tree, treeQuery)
-        : collectExpandedContextPaths(tree),
+        : defaultExpandedForMode(tree),
     );
-  }, [session.id, snapshot.threshold, tree, treeQuery]);
+  }, [session.id, snapshot.threshold, tree, treeQuery, defaultExpandedForMode]);
+
+  const switchMode = useCallback(
+    (nextMode: ExploreContextMode) => {
+      if (nextMode === mode) return;
+      setMode(nextMode);
+    },
+    [mode, setMode],
+  );
 
   useEffect(() => {
     if (!filteredTree) return;
-    if (!findContextNode(filteredTree, selectedNodeId)) {
-      onSelectNode(defaultContextNodeId(filteredTree));
+    if (!findContextNode(filteredTree, currentSelectedId)) {
+      setCurrentSelectedId(defaultContextNodeId(filteredTree));
     }
-  }, [filteredTree, selectedNodeId, onSelectNode]);
+  }, [filteredTree, currentSelectedId, setCurrentSelectedId]);
 
-  const selected = filteredTree ? findContextNode(filteredTree, selectedNodeId) : null;
+  const selected = filteredTree ? findContextNode(filteredTree, currentSelectedId) : null;
   const visibleTree = filteredTree ?? tree;
   const matchCount = useMemo(() => {
     const q = treeQuery.trim().toLowerCase();
@@ -164,11 +262,11 @@ export function ContextViewer({
 
     const roots = visibleTree.children ?? [];
     const navIndex = buildContextTreeNavIndex(roots, expanded);
-    const currentId = selectedNodeId;
+    const currentId = currentSelectedId;
 
     const moveTo = (id: string | null) => {
       if (!id) return;
-      onSelectNode(id);
+      setCurrentSelectedId(id);
       scrollExploreTreeNodeIntoView(id);
     };
 
@@ -215,16 +313,22 @@ export function ContextViewer({
   };
 
   useEffect(() => {
-    scrollExploreTreeNodeIntoView(selectedNodeId);
-  }, [selectedNodeId]);
+    scrollExploreTreeNodeIntoView(currentSelectedId);
+  }, [currentSelectedId]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[var(--hg-surface-2)] px-3 py-1.5">
         <span className="hg-mono text-[10px] text-[var(--hg-muted)] truncate">
-          {sessionNavMeta(session)} · {formatAnalysisTokens(snapshot.threshold)} window
+          {sessionNavMeta(session)}
+          {mode === "contextual"
+            ? ` · ${formatAnalysisTokens(snapshot.threshold)} window`
+            : mode === "at-rest"
+              ? ` · ${atRest.totalLines || "…"} jsonl lines`
+              : ` · ${manifest.manifest?.parts.length ?? "…"} manifest parts`}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          {mode === "contextual" && <CurateModeToggle curate={curate} />}
           {onOpenTree && (
             <button
               type="button"
@@ -236,11 +340,53 @@ export function ContextViewer({
               fork tree
             </button>
           )}
-          <span className="hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)]">
-            contextual model
-          </span>
+          <div
+            className="inline-flex rounded-[2px] border border-[var(--hg-line)] p-0.5"
+            role="group"
+            aria-label="Explore context mode"
+          >
+            {(["at-rest", "turn-ready", "contextual"] as const).map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => switchMode(opt)}
+                aria-pressed={mode === opt}
+                className={
+                  "rounded-[1px] px-2 py-0.5 hg-mono text-[9px] uppercase tracking-wider transition-colors " +
+                  (mode === opt
+                    ? "bg-[var(--hg-accent-tint)] text-[var(--hg-ink)]"
+                    : "text-[var(--hg-muted)] hover:text-[var(--hg-ink)]")
+                }
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+
+      <ContextBudgetStrip
+        mode={mode}
+        session={session}
+        snapshot={snapshot}
+        manifest={mode === "turn-ready" ? manifest.manifest : null}
+        atRest={
+          mode === "at-rest"
+            ? { loadedLines: atRest.lines.length, totalLines: atRest.totalLines }
+            : null
+        }
+        curatedTokens={
+          mode === "contextual" && curate.enabled ? curate.curatedTokens : null
+        }
+      />
+
+      {visibleTree && (
+        <ContextBreadcrumbs
+          tree={visibleTree}
+          selectedNodeId={currentSelectedId}
+          onSelect={setCurrentSelectedId}
+        />
+      )}
 
       <div className="flex min-h-0 flex-1">
         <div className="relative flex shrink-0" style={{ width: sidebarWidth }}>
@@ -249,14 +395,17 @@ export function ContextViewer({
             tabIndex={0}
             onKeyDown={onTreeKeyDown}
             className="flex h-full min-w-0 flex-col border-r border-[var(--hg-line)] bg-[var(--hg-surface)] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--hg-accent)]"
-            aria-label="Session and context tree"
+            aria-label="Context file tree"
           >
-            {exploreState && <ExploreSessionStrip state={exploreState} />}
             <div className="min-h-0 flex-1 overflow-auto">
             <div className="border-b border-[var(--hg-line)] px-3 py-2">
             <div className="hg-section-label">context</div>
             <div className="mt-0.5 text-[10px] leading-snug text-[var(--hg-muted)]">
-              verbatim transcript atoms · contextual buckets &amp; slices
+              {mode === "at-rest"
+                ? "at-rest · native jsonl lines on disk"
+                : mode === "turn-ready"
+                  ? "turn-ready · ordered manifest as sent to the model"
+                  : "contextual model · simulated window, buckets & slices"}
             </div>
             <label className="relative mt-2 block">
               <Search
@@ -287,6 +436,7 @@ export function ContextViewer({
               </div>
             )}
           </div>
+          {mode === "contextual" && curate.enabled && <CurationRollup curate={curate} />}
           <div className="py-1">
             {(visibleTree.children ?? []).map((node) => (
               <ContextTreeBranch
@@ -294,14 +444,41 @@ export function ContextViewer({
                 node={node}
                 depth={0}
                 expanded={expanded}
-                selectedNodeId={selectedNodeId}
+                selectedNodeId={currentSelectedId}
                 treeQuery={treeQuery}
                 onToggle={toggleExpanded}
-                onSelect={onSelectNode}
+                onSelect={setCurrentSelectedId}
+                curate={mode === "contextual" ? curate : null}
               />
             ))}
           </div>
+          {mode === "at-rest" && atRest.nextFromLine != null && (
+            <div className="border-t border-[var(--hg-line)] px-3 py-2">
+              <button
+                type="button"
+                onClick={atRest.loadMore}
+                disabled={atRest.loadingMore}
+                className="w-full rounded-[2px] border border-[var(--hg-line)] bg-[var(--hg-bg-tint)] px-2 py-1 hg-mono text-[9px] uppercase tracking-wider text-[var(--hg-muted)] hover:text-[var(--hg-ink)] disabled:opacity-50"
+              >
+                {atRest.loadingMore
+                  ? "loading…"
+                  : `load more · ${atRest.lines.length} / ${atRest.totalLines}`}
+              </button>
+            </div>
+          )}
           </div>
+          <ContextAsOfPanel
+            mode={mode}
+            session={session}
+            snapshot={snapshot}
+            manifest={mode === "turn-ready" ? manifest.manifest : null}
+            atRest={
+              mode === "at-rest"
+                ? { lines: atRest.lines, totalLines: atRest.totalLines }
+                : null
+            }
+            selectedNodeId={currentSelectedId}
+          />
           </aside>
           <div
             role="separator"
@@ -319,15 +496,42 @@ export function ContextViewer({
           </div>
         </div>
 
-        <ContextEditorPane
-          session={session}
-          snapshot={snapshot}
-          node={selected}
-          blockDrafts={blockDrafts}
-          contextNodeDrafts={contextNodeDrafts}
-          onBlockDraftChange={onBlockDraftChange}
-          onContextNodeDraftChange={onContextNodeDraftChange}
-        />
+        {mode === "contextual" ? (
+          <ContextEditorPane
+            session={session}
+            snapshot={snapshot}
+            node={selected}
+            viewMode="contextual"
+            blockDrafts={blockDrafts}
+            contextNodeDrafts={contextNodeDrafts}
+            onBlockDraftChange={onBlockDraftChange}
+            onContextNodeDraftChange={onContextNodeDraftChange}
+          />
+        ) : mode === "at-rest" ? (
+          <AtRestEditorPane
+            node={selected}
+            harnessKeyStatus={harnessKey.status}
+            harnessKey={harnessKey.key}
+            harnessError={harnessKey.error ?? atRest.error}
+            status={atRest.status}
+            totalLines={atRest.totalLines}
+            loadedLines={atRest.lines.length}
+            line={selected ? atRestTreeData.linesByNodeId.get(selected.id) ?? null : null}
+          />
+        ) : (
+          <TurnReadyEditorPane
+            node={selected}
+            harnessKeyStatus={harnessKey.status}
+            harnessKey={harnessKey.key}
+            harnessError={harnessKey.error ?? manifest.error ?? turns.error}
+            status={manifest.status}
+            manifest={manifest.manifest}
+            turns={turns.turns}
+            selectedTurn={selectedTurn}
+            onSelectTurn={setSelectedTurn}
+            part={selected ? turnReadyTreeData.partsByNodeId.get(selected.id) ?? null : null}
+          />
+        )}
       </div>
     </div>
   );
@@ -341,6 +545,7 @@ function ContextTreeBranch({
   treeQuery,
   onToggle,
   onSelect,
+  curate,
 }: {
   node: ContextTreeNode;
   depth: number;
@@ -349,6 +554,7 @@ function ContextTreeBranch({
   treeQuery: string;
   onToggle: (id: string) => void;
   onSelect: (id: string) => void;
+  curate: CurationApi | null;
 }) {
   const hasChildren = Boolean(node.children?.length);
   const isExpanded = expanded.has(node.id);
@@ -361,6 +567,13 @@ function ContextTreeBranch({
       : isExpanded
         ? FolderOpen
         : FolderClosed;
+
+  const curationState = curate ? curate.stateAt(node.id) : "keep";
+  const isCurateable =
+    curate?.enabled &&
+    (node.kind === "atom" || node.kind === "block" || node.kind === "slice");
+  const isDropped = curationState === "drop";
+  const isSummarized = curationState === "summarize";
 
   return (
     <>
@@ -377,7 +590,7 @@ function ContextTreeBranch({
             ? "bg-[var(--hg-accent-tint)] text-[var(--hg-ink)]"
             : "text-[var(--hg-ink-2)] hover:bg-[var(--hg-bg-tint)]")
         }
-        style={{ paddingLeft: 8 + depth * 14 }}
+        style={{ paddingLeft: 8 + depth * 14, opacity: isDropped ? 0.55 : 1 }}
       >
         {hasChildren ? (
           <span
@@ -393,9 +606,20 @@ function ContextTreeBranch({
           <span className="inline-block w-3 shrink-0" />
         )}
         <Icon size={13} className="shrink-0 text-[var(--hg-muted)]" />
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] leading-none">
+        <span
+          className={`min-w-0 flex-1 truncate font-mono text-[11px] leading-none ${
+            isDropped ? "line-through text-[var(--hg-warn)]" : ""
+          } ${isSummarized ? "italic" : ""}`}
+        >
           <TreeLabel text={node.name} query={treeQuery} />
         </span>
+        {isCurateable && (
+          <CurationPill
+            state={curationState}
+            onCycle={() => curate!.cycleState(node.id)}
+            size="xs"
+          />
+        )}
         {node.tokens !== undefined && (
           <span className="shrink-0 font-mono text-[9px] text-[var(--hg-muted)]">
             {formatAnalysisTokens(node.tokens)}
@@ -414,6 +638,7 @@ function ContextTreeBranch({
             treeQuery={treeQuery}
             onToggle={onToggle}
             onSelect={onSelect}
+            curate={curate}
           />
         ))}
     </>
@@ -443,6 +668,7 @@ function ContextEditorPane({
   session,
   snapshot,
   node,
+  viewMode,
   blockDrafts,
   contextNodeDrafts,
   onBlockDraftChange,
@@ -451,19 +677,20 @@ function ContextEditorPane({
   session: SessionAnalysis;
   snapshot: ThresholdSnapshot;
   node: ContextTreeNode | null;
+  viewMode: ContextViewMode;
   blockDrafts: Record<string, string>;
   contextNodeDrafts: Record<string, string>;
   onBlockDraftChange: (blockId: string, body: string) => void;
   onContextNodeDraftChange: (nodeId: string, body: string) => void;
 }) {
   const sourceDoc = useMemo(
-    () => (node ? buildEditorDocument(session, snapshot, node, {}) : null),
-    [session, snapshot, node],
+    () => (node ? buildEditorDocument(session, snapshot, node, {}, viewMode) : null),
+    [session, snapshot, node, viewMode],
   );
 
   const content = useMemo(
-    () => (node ? buildEditorDocument(session, snapshot, node, blockDrafts) : null),
-    [session, snapshot, node, blockDrafts],
+    () => (node ? buildEditorDocument(session, snapshot, node, blockDrafts, viewMode) : null),
+    [session, snapshot, node, blockDrafts, viewMode],
   );
 
   const code = useMemo(() => {
@@ -588,8 +815,39 @@ function buildEditorDocument(
   snapshot: ThresholdSnapshot,
   node: ContextTreeNode,
   blockDrafts: Record<string, string>,
+  viewMode: ContextViewMode = "contextual",
 ): EditorDocument {
   if (node.kind === "overview") {
+    if (viewMode === "raw") {
+      const corpusTokens = session.atoms.reduce((sum, atom) => sum + atom.tokens, 0);
+      return {
+        badge: "overview",
+        tone: "markdown",
+        meta: [
+          ["project", session.project],
+          ["id", `…${sessionIdSuffix(session.id)}`],
+          ["touched", formatObservedRelative(session.observedAt)],
+          ["corpus", formatAnalysisTokens(corpusTokens)],
+        ],
+        lines: [
+          `# ${displaySessionTitle(session.title)}`,
+          "",
+          session.summary,
+          "",
+          "## transcript",
+          `- atoms: ${session.atoms.length}`,
+          `- corpus: ${formatAnalysisTokens(corpusTokens)}`,
+          `- reported context: ${formatAnalysisTokens(session.contextTokens)}`,
+          "",
+          "Raw view shows verbatim harness records in message order.",
+          "No bucket labels, pinned/tail packing, or threshold simulation.",
+          "",
+          "## path",
+          session.path,
+        ],
+      };
+    }
+
     return {
       badge: "overview",
       tone: "markdown",
@@ -625,7 +883,7 @@ function buildEditorDocument(
   if (node.kind === "atom" && node.atomId) {
     const atom = session.atoms.find((item) => item.id === node.atomId);
     if (!atom) return emptyDoc("atom missing");
-    return atomDocument(atom);
+    return atomDocument(atom, viewMode);
   }
 
   if (node.kind === "block" && node.blockId) {
@@ -639,6 +897,26 @@ function buildEditorDocument(
     const slice = session.slices.find((item) => item.id === node.sliceId);
     if (!slice) return emptyDoc("slice missing");
     return sliceDocument(session, slice, snapshot);
+  }
+
+  if (node.id === "context:transcript") {
+    const ordered = [...session.atoms].sort((a, b) => a.messageIndex - b.messageIndex);
+    return {
+      badge: "transcript",
+      tone: "markdown",
+      meta: [
+        ["atoms", String(ordered.length)],
+        ["order", "message index"],
+      ],
+      lines: [
+        "# transcript",
+        "",
+        "Full session corpus in harness message order.",
+        "Open individual `.atom` files for verbatim record bodies.",
+        "",
+        `atoms: ${ordered.length}`,
+      ],
+    };
   }
 
   return {
@@ -655,7 +933,44 @@ function buildEditorDocument(
   };
 }
 
-function atomDocument(atom: ContextAtom): EditorDocument {
+function atomDocument(atom: ContextAtom, viewMode: ContextViewMode = "contextual"): EditorDocument {
+  if (viewMode === "raw") {
+    const fields: Array<[string, string]> = [
+      ["kind", "atom"],
+      ["source", atom.sourceType],
+      ["tokens", formatAnalysisTokens(atom.rawTokenCount || atom.tokens)],
+    ];
+    if (atom.role) fields.push(["role", atom.role]);
+    if (atom.toolName) fields.push(["tool", atom.toolName]);
+    if (atom.lineNumber) fields.push(["line", String(atom.lineNumber)]);
+    if (atom.messageIndex >= 0) fields.push(["message", String(atom.messageIndex)]);
+    if (atom.command) fields.push(["command", atom.command]);
+    if (atom.excerptTruncated) {
+      fields.push([
+        "source clip",
+        atom.sourceTokenCount
+          ? `harness truncated (~${formatAnalysisTokens(atom.sourceTokenCount)} original)`
+          : "harness truncated",
+      ]);
+    }
+
+    return {
+      badge: atom.sourceType,
+      meta: fields,
+      lines: [
+        "---",
+        `label: ${atom.label}`,
+        ...(atom.lineNumber ? [`line: ${atom.lineNumber}`] : []),
+        "---",
+        "",
+        atom.excerpt || atom.summary,
+        ...(atom.fileRefs.length ? ["", "files:", ...atom.fileRefs.map((ref) => `  - ${ref}`)] : []),
+      ],
+      tone: editorToneForAtom(atom),
+      sourceTruncated: atom.excerptTruncated,
+    };
+  }
+
   const meta = bucketMeta(atom.bucket);
   const fields: Array<[string, string]> = [
     ["kind", "atom"],
@@ -757,4 +1072,399 @@ function sliceDocument(session: SessionAnalysis, slice: ContextSlice, snapshot: 
 
 function emptyDoc(message: string): EditorDocument {
   return { lines: [message], meta: [] };
+}
+
+type HarnessKeyStatus = "idle" | "loading" | "ready" | "error";
+
+function HarnessFallback({
+  status,
+  keyMissing,
+  error,
+}: {
+  status: HarnessKeyStatus;
+  keyMissing: boolean;
+  error?: string;
+}) {
+  let message: string;
+  if (status === "loading") message = "Resolving session in harness catalog…";
+  else if (status === "error") message = error ?? "Failed to resolve harness session.";
+  else if (keyMissing)
+    message =
+      "This session isn't indexed by the harness catalog. Contextual view still works; harness-native data is unavailable.";
+  else message = error ?? "Harness data unavailable.";
+
+  return (
+    <div className="flex flex-1 items-center justify-center bg-[#0d1114] px-6 text-center text-[12px] text-[var(--hg-muted)]">
+      <span className="max-w-md leading-relaxed">{message}</span>
+    </div>
+  );
+}
+
+function AtRestEditorPane({
+  node,
+  harnessKeyStatus,
+  harnessKey,
+  harnessError,
+  status,
+  totalLines,
+  loadedLines,
+  line,
+}: {
+  node: ContextTreeNode | null;
+  harnessKeyStatus: HarnessKeyStatus;
+  harnessKey: string | null;
+  harnessError?: string;
+  status: HarnessKeyStatus;
+  totalLines: number;
+  loadedLines: number;
+  line: AtRestLine | null;
+}) {
+  if (harnessKeyStatus !== "ready" || !harnessKey) {
+    return (
+      <HarnessFallback
+        status={harnessKeyStatus}
+        keyMissing={harnessKeyStatus === "ready" && !harnessKey}
+        error={harnessError}
+      />
+    );
+  }
+
+  if (status === "loading" && !line && node?.id !== AT_REST_OVERVIEW_NODE_ID) {
+    return (
+      <div className="flex flex-1 items-center justify-center bg-[#0d1114] text-[12px] text-[var(--hg-muted)]">
+        Loading at-rest lines…
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <HarnessFallback status="error" keyMissing={false} error={harnessError} />
+    );
+  }
+
+  if (node?.id === AT_REST_OVERVIEW_NODE_ID || !line) {
+    const overview = [
+      "# at-rest",
+      "",
+      "Native JSONL records as they live on disk.",
+      "Pick a line in the tree to inspect its parsed JSON.",
+      "",
+      `lines loaded: ${loadedLines} / ${totalLines}`,
+    ].join("\n");
+    return (
+      <div className="flex min-w-0 flex-1 flex-col bg-[#0d1114]">
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-2">
+          <FileCode2 size={14} className="shrink-0 text-[var(--hg-accent)]" />
+          <div className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--hg-ink)]">
+            at-rest / session.json
+          </div>
+          <span className="hg-pill">overview</span>
+        </div>
+        <div className="min-h-0 flex-1">
+          <CodeEditor
+            key="at-rest:overview"
+            code={overview}
+            language="markdown"
+            filename="session.md"
+            showLineNumbers
+            className="h-full min-h-0"
+            onChange={() => {
+              // read-only overview
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const json = safeStringifyJson(line.native);
+  const meta: Array<[string, string]> = [
+    ["line", String(line.line)],
+    ["record", line.recordType],
+  ];
+  if (line.role) meta.push(["role", line.role]);
+  if (line.timestamp) meta.push(["timestamp", line.timestamp]);
+  if (line.turnId) meta.push(["turn", line.turnId]);
+  if (line.source.path) meta.push(["source", `${line.source.path}:${line.line}`]);
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col bg-[#0d1114]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-2">
+        <FileCode2 size={14} className="shrink-0 text-[var(--hg-accent)]" />
+        <div className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--hg-ink)]">
+          {node?.path.join(" / ") ?? `line ${line.line}`}
+        </div>
+        <span className="hg-pill">{line.recordType}</span>
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-1.5 font-mono text-[10px] text-[var(--hg-muted)]">
+        {meta.map(([k, v]) => (
+          <span key={k}>
+            {k}: <span className="text-[var(--hg-ink-2)]">{v}</span>
+          </span>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1">
+        <CodeEditor
+          key={`at-rest:${line.line}`}
+          code={json}
+          language="json"
+          filename={`line-${line.line}.json`}
+          showLineNumbers
+          className="h-full min-h-0"
+          onChange={() => {
+            // at-rest is read-only
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TurnReadyEditorPane({
+  node,
+  harnessKeyStatus,
+  harnessKey,
+  harnessError,
+  status,
+  manifest,
+  turns,
+  selectedTurn,
+  onSelectTurn,
+  part,
+}: {
+  node: ContextTreeNode | null;
+  harnessKeyStatus: HarnessKeyStatus;
+  harnessKey: string | null;
+  harnessError?: string;
+  status: HarnessKeyStatus;
+  manifest: TurnReadyManifest | null;
+  turns: TurnRecord[];
+  selectedTurn: "latest" | string;
+  onSelectTurn: (turn: "latest" | string) => void;
+  part: ManifestPart | null;
+}) {
+  if (harnessKeyStatus !== "ready" || !harnessKey) {
+    return (
+      <HarnessFallback
+        status={harnessKeyStatus}
+        keyMissing={harnessKeyStatus === "ready" && !harnessKey}
+        error={harnessError}
+      />
+    );
+  }
+
+  if (status === "loading" && !manifest) {
+    return (
+      <div className="flex flex-1 items-center justify-center bg-[#0d1114] text-[12px] text-[var(--hg-muted)]">
+        Loading turn-ready manifest…
+      </div>
+    );
+  }
+
+  if (status === "error" || !manifest) {
+    return (
+      <HarnessFallback
+        status="error"
+        keyMissing={false}
+        error={harnessError ?? "Manifest unavailable."}
+      />
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col bg-[#0d1114]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-2">
+        <FileCode2 size={14} className="shrink-0 text-[var(--hg-accent)]" />
+        <div className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--hg-ink)]">
+          {node?.path.join(" / ") ?? "turn-ready / manifest.json"}
+        </div>
+        <AssemblyBadge assembly={manifest.assembly} />
+      </div>
+
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-1.5 font-mono text-[10px] text-[var(--hg-muted)]">
+        <label className="flex items-center gap-1">
+          <span className="uppercase tracking-wider">turn:</span>
+          <select
+            value={selectedTurn}
+            onChange={(e) => onSelectTurn(e.target.value as "latest" | string)}
+            className="rounded-[2px] border border-[var(--hg-line)] bg-[var(--hg-bg-tint)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--hg-ink)] focus:border-[var(--hg-accent)] focus:outline-none"
+          >
+            <option value="latest">latest</option>
+            {turns.map((t) => (
+              <option key={t.id} value={t.id}>
+                {turnLabel(t)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span>
+          parts: <span className="text-[var(--hg-ink-2)]">{manifest.parts.length}</span>
+        </span>
+        {manifest.tokenBudget.estimatedInputTokens != null && (
+          <span>
+            est tokens:{" "}
+            <span className="text-[var(--hg-ink-2)]">
+              {formatAnalysisTokens(manifest.tokenBudget.estimatedInputTokens)}
+            </span>
+          </span>
+        )}
+        {manifest.model && (
+          <span>
+            model: <span className="text-[var(--hg-ink-2)]">{manifest.model}</span>
+          </span>
+        )}
+      </div>
+
+      {manifest.warnings.length > 0 && (
+        <div className="flex shrink-0 items-start gap-2 border-b border-[var(--hg-line)] bg-[color:rgb(120_80_20_/_0.18)] px-4 py-2 font-mono text-[10px] text-amber-200">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          <ul className="list-none space-y-0.5">
+            {manifest.warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <ManifestBody node={node} manifest={manifest} part={part} />
+    </div>
+  );
+}
+
+function ManifestBody({
+  node,
+  manifest,
+  part,
+}: {
+  node: ContextTreeNode | null;
+  manifest: TurnReadyManifest;
+  part: ManifestPart | null;
+}) {
+  if (node?.id === TURN_READY_OVERVIEW_NODE_ID || !part) {
+    const overview = [
+      "# turn-ready manifest",
+      "",
+      `assembly: ${manifest.assembly.status}`,
+      `confidence: ${manifest.assembly.confidence}`,
+      `adapter: ${manifest.adapterVersion}`,
+      manifest.cwd ? `cwd: ${manifest.cwd}` : "",
+      "",
+      "## parts",
+      ...manifest.parts.map(
+        (p) => `- ${String(p.order).padStart(2, "0")} ${p.kind} · truth=${p.truth}`,
+      ),
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return (
+      <div className="min-h-0 flex-1">
+        <CodeEditor
+          key={`manifest-overview:${manifest.id}`}
+          code={overview}
+          language="markdown"
+          filename="manifest.md"
+          showLineNumbers
+          className="h-full min-h-0"
+          onChange={() => {
+            // turn-ready is read-only
+          }}
+        />
+      </div>
+    );
+  }
+
+  const lang: DocumentLanguage =
+    part.kind === "tool-call" || part.kind === "tool-result" || part.kind === "reasoning"
+      ? "json"
+      : part.kind === "system" ||
+          part.kind === "developer" ||
+          part.kind === "user" ||
+          part.kind === "assistant" ||
+          part.kind === "compact-summary"
+        ? "markdown"
+        : "plain";
+
+  const body =
+    part.content ??
+    (part.native != null ? safeStringifyJson(part.native) : `[content unavailable — truth=${part.truth}]`);
+
+  const meta: Array<[string, string]> = [
+    ["kind", part.kind],
+    ["truth", part.truth],
+    ["transfer", part.transfer],
+  ];
+  if (part.role) meta.push(["role", part.role]);
+  if (part.tokens != null) meta.push(["tokens", formatAnalysisTokens(part.tokens)]);
+  if (part.sourceRefs[0]?.path) {
+    const ref = part.sourceRefs[0];
+    meta.push(["source", ref.line ? `${ref.path}:${ref.line}` : ref.path!]);
+  }
+
+  return (
+    <>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-1.5 font-mono text-[10px] text-[var(--hg-muted)]">
+        <TruthPill truth={part.truth} />
+        {meta.map(([k, v]) => (
+          <span key={k}>
+            {k}: <span className="text-[var(--hg-ink-2)]">{v}</span>
+          </span>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1">
+        <CodeEditor
+          key={`manifest-part:${manifest.id}:${part.id}`}
+          code={body}
+          language={lang}
+          filename={`${part.order}-${part.kind}`}
+          showLineNumbers
+          className="h-full min-h-0"
+          onChange={() => {
+            // turn-ready is read-only
+          }}
+        />
+      </div>
+    </>
+  );
+}
+
+function AssemblyBadge({ assembly }: { assembly: TurnReadyManifest["assembly"] }) {
+  const tone =
+    assembly.confidence === "high"
+      ? "accent"
+      : assembly.confidence === "medium"
+        ? ""
+        : "warn";
+  return (
+    <span
+      className={`hg-pill ${tone}`}
+      title={`status: ${assembly.status} · confidence: ${assembly.confidence}`}
+    >
+      {assembly.status} · {assembly.confidence}
+    </span>
+  );
+}
+
+function TruthPill({ truth }: { truth: ManifestTruth }) {
+  const tone =
+    truth === "logged"
+      ? "accent"
+      : truth === "reconstructed"
+        ? ""
+        : truth === "inferred"
+          ? "warn"
+          : "warn";
+  return (
+    <span className={`hg-pill ${tone}`} title={`truth: ${truth}`}>
+      {truth}
+    </span>
+  );
+}
+
+function safeStringifyJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }

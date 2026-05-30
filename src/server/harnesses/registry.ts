@@ -1,6 +1,10 @@
+import { stat } from "node:fs/promises";
+
+import { projectHintFromPath, titleFromPath } from "../../lib/sessionLabel";
 import { claudeAdapter } from "./adapters/claude";
 import { codexAdapter } from "./adapters/codex";
 import { piAdapter } from "./adapters/pi";
+import { decodeSessionKey } from "./at-rest";
 import type {
   AtRestReadOptions,
   AtRestReadResponse,
@@ -9,10 +13,11 @@ import type {
   HarnessCatalogResponse,
   HarnessId,
   HarnessSessionRef,
+  HarnessSidecarsResponse,
+  HarnessTurnsResponse,
   SidecarFile,
   SidecarOptions,
   TurnReadyManifest,
-  TurnRecord,
 } from "./types";
 
 const adapters: Record<HarnessId, HarnessAdapter> = {
@@ -34,12 +39,19 @@ export function parseHarnessId(value: string | null | undefined): HarnessId | un
 export async function catalogHarnessSessions(
   opts: HarnessCatalogOptions = {},
 ): Promise<HarnessCatalogResponse> {
+  const limit = saneLimit(opts.limit, 120);
   const selected = opts.harness ? [adapters[opts.harness]] : Object.values(adapters);
-  const discovered = await Promise.all(selected.map((adapter) => adapter.discover({ ...opts, limit: opts.limit ?? 120 })));
-  const sessions = discovered
-    .flat()
-    .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    .slice(0, opts.limit ?? 120);
+  const discoveredByAdapter = await Promise.all(
+    selected.map((adapter) => adapter.discover({ ...opts, limit })),
+  );
+  const all = discoveredByAdapter.flat().sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const sessions = ensureHarnessRepresentation(
+    all.slice(0, limit),
+    discoveredByAdapter,
+    opts.harness ? [] : selected.map((adapter) => adapter.id),
+    limit,
+  );
+
   for (const session of sessions) sessionCache.set(session.key, session);
   return { generatedAt: new Date().toISOString(), total: sessions.length, sessions };
 }
@@ -50,8 +62,31 @@ export async function getHarnessSession(sessionKey: string): Promise<HarnessSess
 
   const catalog = await catalogHarnessSessions({ limit: 1_500 });
   const session = catalog.sessions.find((candidate) => candidate.key === sessionKey);
-  if (!session) throw new Error(`Unknown harness session: ${sessionKey}`);
-  return harnessAdapterFor(session.harness).open(session);
+  if (session) return harnessAdapterFor(session.harness).open(session);
+
+  const decoded = decodeSessionKey(sessionKey);
+  if (decoded) {
+    try {
+      const fileStat = await stat(decoded.path);
+      const fallback: HarnessSessionRef = {
+        key: sessionKey,
+        harness: decoded.harness,
+        path: decoded.path,
+        project: projectHintFromPath(decoded.path),
+        title: titleFromPath(decoded.path),
+        summary: "Discovered agent transcript on disk.",
+        observedAt: new Date(fileStat.mtimeMs).toISOString(),
+        mtimeMs: fileStat.mtimeMs,
+        sizeBytes: fileStat.size,
+      };
+      sessionCache.set(fallback.key, fallback);
+      return harnessAdapterFor(decoded.harness).open(fallback);
+    } catch {
+      // Fall through to contract-shaped 404 below.
+    }
+  }
+
+  throw new Error(`Unknown harness session: ${sessionKey}`);
 }
 
 export async function readHarnessAtRest(
@@ -62,7 +97,6 @@ export async function readHarnessAtRest(
   return harnessAdapterFor(session.harness).readAtRest(session, opts);
 }
 
-
 export async function listHarnessSidecars(
   sessionOrKey: HarnessSessionRef | string,
   opts: SidecarOptions = {},
@@ -71,7 +105,16 @@ export async function listHarnessSidecars(
   return harnessAdapterFor(session.harness).listSidecars(session, opts);
 }
 
-export async function listHarnessTurns(sessionKey: string): Promise<{ session: HarnessSessionRef; turns: TurnRecord[] }> {
+export async function getHarnessSidecarsResponse(
+  sessionKey: string,
+  opts: SidecarOptions = {},
+): Promise<HarnessSidecarsResponse> {
+  const session = await getHarnessSession(sessionKey);
+  const sidecars = await listHarnessSidecars(session, opts);
+  return { session, sidecars };
+}
+
+export async function listHarnessTurns(sessionKey: string): Promise<HarnessTurnsResponse> {
   const session = await getHarnessSession(sessionKey);
   const turns = await harnessAdapterFor(session.harness).listTurns(session);
   return { session, turns };
@@ -83,4 +126,41 @@ export async function buildHarnessManifest(
 ): Promise<TurnReadyManifest> {
   const session = await getHarnessSession(sessionKey);
   return harnessAdapterFor(session.harness).buildManifest(session, turn);
+}
+
+function saneLimit(value: number | undefined, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.min(1_500, Math.floor(Number(value))));
+}
+
+function ensureHarnessRepresentation(
+  selected: HarnessSessionRef[],
+  discoveredByAdapter: HarnessSessionRef[][],
+  requiredHarnesses: HarnessId[],
+  limit: number,
+): HarnessSessionRef[] {
+  if (limit < requiredHarnesses.length) return selected;
+  const byHarness = new Map<HarnessId, HarnessSessionRef[]>(
+    discoveredByAdapter.map((sessions) => [sessions[0]?.harness, sessions]).filter(
+      (entry): entry is [HarnessId, HarnessSessionRef[]] => Boolean(entry[0]),
+    ),
+  );
+  const next = [...selected];
+  for (const harness of requiredHarnesses) {
+    if (next.some((session) => session.harness === harness)) continue;
+    const replacement = byHarness.get(harness)?.[0];
+    if (!replacement) continue;
+    if (next.length < limit) next.push(replacement);
+    else next[next.length - 1] = replacement;
+  }
+  return dedupeSessions(next).sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, limit);
+}
+
+function dedupeSessions(sessions: HarnessSessionRef[]): HarnessSessionRef[] {
+  const seen = new Set<string>();
+  return sessions.filter((session) => {
+    if (seen.has(session.key)) return false;
+    seen.add(session.key);
+    return true;
+  });
 }

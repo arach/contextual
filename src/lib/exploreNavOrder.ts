@@ -60,6 +60,7 @@ export function adjacentSessionId(
 }
 
 export function scrollExploreSessionIntoView(sessionId: string): void {
-  const el = document.querySelector(`[data-explore-session-id="${sessionId}"]`);
-  el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  document
+    .getElementById(`explore-session-${sessionId}`)
+    ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }

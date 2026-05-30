@@ -19,27 +19,27 @@ export function useCommands(store: ThreadStore, shell: ShellActions): CommandOpt
   return useMemo<CommandOption[]>(() => {
     const cmds: CommandOption[] = [];
 
-    // --- thread switching ---
+    // --- run switching ---
     for (const t of store.threads) {
       cmds.push({
         id: `thread:${t.id}`,
-        label: `Switch to ${t.name}`,
+        label: `Open ${t.name} run`,
         shortcut: t.id === store.activeId ? "active" : undefined,
         action: () => store.select(t.id),
       });
     }
 
-    // --- thread actions ---
+    // --- run actions ---
     cmds.push(
       {
         id: "thread:branch",
-        label: "Branch this thread",
+        label: "Fork current run",
         shortcut: "⌘B",
         action: store.branch,
       },
       {
         id: "thread:archive",
-        label: "Archive this thread",
+        label: "Archive current run",
         action: () => alert("(proto) archive not wired"),
       },
       {
@@ -63,7 +63,7 @@ export function useCommands(store: ThreadStore, shell: ShellActions): CommandOpt
     if (shell.toggleLeft) {
       cmds.push({
         id: "shell:toggle-left",
-        label: "Toggle threads panel",
+        label: "Toggle runs panel",
         shortcut: "⌘[",
         action: shell.toggleLeft,
       });
@@ -79,17 +79,17 @@ export function useCommands(store: ThreadStore, shell: ShellActions): CommandOpt
     cmds.push(
       {
         id: "shell:open-session",
-        label: "Open Session view",
+        label: "Open Instantiate runtime",
         action: shell.openSession,
       },
       {
         id: "shell:open-designer",
-        label: "Open Designer view",
+        label: "Open Package studio",
         action: shell.openDesigner,
       },
       {
         id: "shell:open-analysis",
-        label: "Open Analysis view",
+        label: "Open Explore studio",
         action: shell.openAnalysis,
       },
       {

@@ -26,9 +26,9 @@ function useCommands(): CommandOption[] {
 
   return useMemo(() => {
     const modeCommands: CommandOption[] = [
-      { id: "contextual:mode-work", label: "Work", action: () => app.setMode("session") },
+      { id: "contextual:mode-work", label: "Instantiate", action: () => app.setMode("session") },
       { id: "contextual:mode-explore", label: "Explore", action: () => app.setMode("analysis") },
-      { id: "contextual:mode-packages", label: "Packages", action: () => app.setMode("designer") },
+      { id: "contextual:mode-packages", label: "Package", action: () => app.setMode("designer") },
     ];
 
     if (app.mode === "analysis") {
@@ -84,7 +84,7 @@ function useStatus(): { label: string; color: StatusColor } {
   }
 
   if (mode === "designer") {
-    return { label: `packages · ${designer.active.name}`, color: "neutral" };
+    return { label: `package · ${designer.active.name}`, color: "neutral" };
   }
 
   const phaseLabel = loadPhaseLabel(explore.loadPhase);
@@ -100,13 +100,13 @@ function useStatus(): { label: string; color: StatusColor } {
 export const contextualApp: HudsonApp = {
   id: "contextual",
   name: "Contextual",
-  description: "Context engineering — work, explore, and package agent context",
+  description: "Upstream context tooling for exploring, packaging, instantiating, and forking agent sessions",
   mode: "panel",
   icon: createElement(Layers, { size: 14 }),
   agentContext:
-    "Contextual inspects agent transcripts. Buckets and window packing are Contextual's proprietary model, not provider ground truth. Atoms are verbatim from source unless marked source-clipped.",
+    "Contextual prepares agent sessions before launch and fork. Harness records are preserved as source truth; Contextual atoms, buckets, and packages are interpretation layers with provenance.",
 
-  leftPanel: { title: "Find", icon: createElement(Radio, { size: 12 }) },
+  leftPanel: { title: "Runs", icon: createElement(Radio, { size: 12 }) },
   rightPanel: { title: "Inspector", icon: createElement(SlidersHorizontal, { size: 12 }) },
 
   Provider: ContextualProvider,

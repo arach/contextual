@@ -121,5 +121,9 @@ export interface Thread {
   lastUsage?: LastUsage;
 }
 
+/** New Runtime vocabulary aliases. Keep Thread/branch storage names stable while contracts settle. */
+export type RuntimeRun = Thread;
+export type RuntimeForkName = Thread["activeBranch"];
+
 /** Hard cap on the model's context window for this prototype. */
 export const TOTAL_BUDGET = 100_000;

@@ -25,7 +25,7 @@ export function buildManifestFromAtRest(
   const turn = findTurn(turns, turnSelector) ?? fallbackTurn(session, lines);
   const cutoffLine = turn.userLine ?? maxSourceLine(turn) ?? lines[lines.length - 1]?.line ?? 0;
   const eligible = lines.filter((line) => line.line <= cutoffLine);
-  const parts = buildParts(session, eligible, turn, sidecars);
+  const parts = buildParts(session, eligible, sidecars);
   const tokenBudget = mergeTokenBudget(turn, parts);
   const hasTurnContext = turn.nativeRefs.some((ref) => ref.recordType === "turn_context");
   const warnings = manifestWarnings(session, turn, sidecars, hasTurnContext);
@@ -63,7 +63,6 @@ function fallbackTurn(session: HarnessSessionRef, lines: AtRestLine[]): TurnReco
 function buildParts(
   session: HarnessSessionRef,
   lines: AtRestLine[],
-  turn: TurnRecord,
   sidecars: SidecarFile[],
 ): ManifestPart[] {
   const parts: ManifestPart[] = [];
@@ -84,17 +83,6 @@ function buildParts(
   } else if (session.harness === "claude") {
     addSidecarParts(sidecars, add, "inferred");
     addClaudeTranscriptParts(lines, add);
-    if (turn.compactBoundary) {
-      add({
-        kind: "compact-summary",
-        role: "system",
-        title: "Claude compact boundary",
-        content: turn.compactBoundary.summary ?? "Claude logged a compaction boundary before this turn.",
-        truth: "logged",
-        sourceRefs: [turn.compactBoundary.source],
-        transfer: "transform",
-      });
-    }
   } else {
     addSidecarParts(sidecars, add, "reconstructed");
     addPiTranscriptParts(lines, add);

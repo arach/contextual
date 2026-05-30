@@ -1,6 +1,19 @@
 # Contextual
 
-A deliberately *designed* context environment for agentic engineering. Decouples conversation threads from LLM context management: every dispatch is composed fresh from a Fixed zone (pinned-every-call modules) and a Soft zone (recent turns + summaries). Statelessness is a feature.
+Upstream context tooling for agentic engineering. Contextual inspects prior sessions, packages durable context, instantiates new runs in target harnesses, and forks from known provenance.
+
+Contextual is not trying to be the live control plane for hidden provider context. Model providers and harnesses increasingly own server-side caching, compression, memory, and session reconstruction. Contextual focuses on the durable boundaries before a run starts and when a run is deliberately forked, cloned, packaged, or replayed.
+
+## Product model
+
+| Verb | Primary surface | Product job |
+| --- | --- | --- |
+| **Explore** | Developer-first Studio | Inspect native sessions, turn-ready manifests, atoms, buckets, and stale context |
+| **Package** | Developer-first Studio | Distill reusable context into versioned artifacts with provenance and freshness rules |
+| **Instantiate** | Agent-first Runtime | Compile packages and recipes into a launch plan for a target harness/model/workspace |
+| **Fork** | Agent-first Runtime | Derive a new run from a prior manifest or run with explicit lineage and transfer decisions |
+
+See [docs/INDEX.md](docs/INDEX.md) for the active engineering docs.
 
 ## Backends
 
@@ -43,22 +56,28 @@ For the **pi-ai** backend, you have two auth choices:
 
 ## Run
 
-For OAuth or pi-coding-agent (no API key needed):
+For the primary Next AppShell host:
 
 ```bash
 bun dev
 ```
 
-Open `http://localhost:5173`.
+Open `http://localhost:5180`.
+
+The legacy Vite prototype is still available for older live-dispatch paths:
+
+```bash
+bun run dev:vite
+```
 
 ## Architecture
 
-- `src/lib/backends/types.ts` — Backend interface, DispatchRequest, DispatchResult
-- `src/lib/backends/pi-coding-agent.ts` — pi CLI backend (subprocess, native sessions)
-- `src/lib/backends/pi-ai.ts` — pi-ai backend (in-process, stateless)
-- `src/lib/backends/client.ts` — browser-side fetch client
-- `vite-plugin-backends.ts` — dev-server router that dispatches to the right backend
+- `src/server/harnesses/*` - harness-neutral catalog, at-rest, turns, manifests
+- `src/lib/harnessContract.ts` - shared REST contract and client helpers
+- `src/server/session-analysis/*` - Contextual atoms, slices, buckets, and recipe drafts
+- `src/contextualApp/*` - Hudson AppShell product surface
+- `src/lib/backends/*` - legacy/live backend dispatch paths and pi integration
 
-Contextual owns the canonical branch/tree manifest. pi-coding-agent dispatches mirror to native pi sessions at `~/.contextual/sessions/`; pi-ai dispatches are stateless and have no on-disk footprint.
+Contextual owns the upstream artifacts: packages, launch recipes, instantiation records, fork plans, and replay bundles. Harness-native sessions remain important, but they are treated as sources and targets rather than the whole product model.
 
-See `docs/CTX-001-pi-ai-backend.md` for the design rationale.
+Start with [docs/ENG-contextual-platform.md](docs/ENG-contextual-platform.md) for the current engineering vision.

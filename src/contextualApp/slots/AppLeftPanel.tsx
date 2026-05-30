@@ -31,5 +31,9 @@ export function AppLeftPanel() {
     );
   }
 
-  return <ExploreSessionList state={explore} />;
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <ExploreSessionList state={explore} />
+    </div>
+  );
 }

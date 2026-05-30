@@ -11,7 +11,7 @@ import type {
   SidecarFile,
 } from "./types";
 
-const JSONL_PAGE_LIMIT = 1_000;
+const JSONL_PAGE_LIMIT = 500;
 
 export const HOME = process.env.HOME ?? "/Users/arach";
 
@@ -20,7 +20,20 @@ export function stableHash(input: string, length = 24): string {
 }
 
 export function stableSessionKey(harness: HarnessId, path: string): string {
-  return `${harness}-${stableHash(`${harness}:${path}`)}`;
+  return `${harness}:${Buffer.from(path, "utf8").toString("base64url")}`;
+}
+
+export function decodeSessionKey(key: string): { harness: HarnessId; path: string } | null {
+  const colon = key.indexOf(":");
+  if (colon <= 0) return null;
+  const harness = key.slice(0, colon) as HarnessId;
+  if (harness !== "codex" && harness !== "claude" && harness !== "pi") return null;
+  try {
+    const path = Buffer.from(key.slice(colon + 1), "base64url").toString("utf8");
+    return path.startsWith("/") ? { harness, path } : null;
+  } catch {
+    return null;
+  }
 }
 
 export function sidecarId(path: string): string {
