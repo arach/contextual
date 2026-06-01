@@ -1,6 +1,6 @@
-// Right rail in the Designer — package metadata, budget allocation, version
+// Right rail in the Designer — cartridge metadata, budget allocation, version
 // history, and the publish CTA. All edit affordances are visual today; this
-// surface is mostly about reading and confirming the shape of the package.
+// surface is mostly about reading and confirming the shape of the cartridge.
 
 import type { ContextPackage } from "@/data/packages";
 import type { ContextModule } from "@/types";
@@ -15,7 +15,7 @@ export function PackageMeta({ pkg, modules }: PackageMetaProps) {
   const total = sumTokens(modules);
   return (
     <div className="h-full overflow-auto p-5">
-      <div className="hg-section-label mb-3">package · {pkg.name}</div>
+      <div className="hg-section-label mb-3">cartridge · {pkg.name}</div>
 
       <Row label="name" value={pkg.name} />
       <Row label="version" value={pkg.version} mono />
@@ -61,7 +61,7 @@ export function PackageMeta({ pkg, modules }: PackageMetaProps) {
         </div>
       </div>
 
-      <button className="hg-btn primary w-full justify-center mt-3">publish v0.5 ↑</button>
+      <button className="hg-btn primary w-full justify-center mt-3">publish cartridge v0.5 ↑</button>
     </div>
   );
 }

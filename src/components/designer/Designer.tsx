@@ -1,4 +1,4 @@
-// Designer mode — a workbench for crafting context packages.
+// Designer mode — a workbench for crafting context cartridges.
 //
 // The view is split across two roots:
 //   - <DesignerChrome /> renders the two SidePanels into the HUD slot.
@@ -64,7 +64,7 @@ export function DesignerChrome({
     <>
       <SidePanel
         side="left"
-        title="PACKAGES"
+        title="CARTRIDGES"
         icon={<Layers size={12} className="text-[var(--hg-accent)]" />}
         width={leftWidth}
         onResizeStart={onResizeLeft}
@@ -80,7 +80,7 @@ export function DesignerChrome({
 
       <SidePanel
         side="right"
-        title="PACKAGE · META"
+        title="CARTRIDGE · META"
         icon={<Settings size={12} className="text-[var(--hg-accent)]" />}
         width={rightWidth}
         onResizeStart={onResizeRight}
@@ -114,7 +114,7 @@ export function DesignerWorkbench({ state }: { state: DesignerState }) {
             <b className="text-[var(--hg-ink)] font-medium">{modules.length}</b> cards ·{" "}
             <b className="text-[var(--hg-ink)] font-medium">{fmtTokens(totalTokens)}</b> tok
             <br />
-            budget allocation ·{" "}
+            cartridge budget ·{" "}
             <b className="text-[var(--hg-ink)] font-medium">{pkg.budget}k</b>
           </span>
         </div>

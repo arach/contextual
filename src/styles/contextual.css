@@ -234,3 +234,12 @@ body {
 .hg-reticle::after {
   display: none;
 }
+
+/* ── Studio overrides — softer rules, lower-contrast hovers ── */
+:root,
+html[data-contextual-shell="scout"] {
+  --studio-rule:        color-mix(in oklab, var(--ctx-ink) 5%, transparent);
+  --studio-rule-strong: color-mix(in oklab, var(--ctx-ink) 10%, transparent);
+  --studio-chip-bg:     color-mix(in oklab, var(--ctx-ink) 3%, transparent);
+  --studio-chip-border: color-mix(in oklab, var(--ctx-ink) 6%, transparent);
+}

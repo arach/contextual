@@ -1,4 +1,4 @@
-// Left rail in the Designer — packages with name, version, brief, and quick
+// Left rail in the Designer — cartridges with name, version, brief, and quick
 // metadata. Keeps the same Hangar primitives as the rest of the app.
 import type { ContextPackage } from "@/data/packages";
 
@@ -11,7 +11,7 @@ interface PackageListProps {
 export function PackageList({ packages, activeId, onSelect }: PackageListProps) {
   return (
     <div className="h-full overflow-auto p-2">
-      <div className="hg-section-label px-2 pt-1 pb-2">packages</div>
+      <div className="hg-section-label px-2 pt-1 pb-2">cartridges</div>
       {packages.map((p) => {
         const active = p.id === activeId;
         return (
@@ -44,7 +44,7 @@ export function PackageList({ packages, activeId, onSelect }: PackageListProps) 
         );
       })}
       <button className="w-full mt-2 px-3 py-2 border border-dashed border-[var(--hg-hairline)] rounded-[2px] hg-mono text-[10.5px] tracking-wider uppercase text-[var(--hg-muted)] hover:text-[var(--hg-accent)] hover:border-[var(--hg-accent)]">
-        + new package
+        + new cartridge
       </button>
     </div>
   );

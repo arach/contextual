@@ -6,9 +6,19 @@ Last updated: 2026-05-30
 
 ## Thesis
 
-Contextual is an upstream session toolchain for agentic engineering. Its job is to put agents in a strong starting position and preserve the provenance of how they got there.
+Contextual is an agentic context planning tool. Its job is to help developers and agents plan, validate, and launch the context a session should start with, while preserving the provenance of how that starting position was made.
 
 It should not compete with model providers or harnesses on hidden in-flight context management. Providers and harnesses increasingly own server-side caching, compression, memory, and session reconstruction. Contextual's durable boundary is before a run starts and when a run is deliberately forked, cloned, packaged, or replayed.
+
+## Organizing Principles
+
+1. Plan before launch. Contextual should make the intended starting context explicit before an agent spends a turn.
+2. Artifacts over chat. The planning conversation should compile into cartridges, plans, evals, and records instead of staying trapped in a transcript.
+3. Source truth first. Native records, docs, sidecars, and manual notes must stay distinguishable from interpretation.
+4. Profiles, not monoliths. A cartridge should compile into briefing, working-set, and deep-pack profiles for different agents and jobs.
+5. Health gates every launch. Efficiency, freshness, coverage, provenance, and evals should produce a keep, refresh, rebuild, or block recommendation.
+6. Forks are lineage claims. Contextual must label native forks, replay forks, recipe-derived starts, and manual forks honestly.
+7. Agent-readable is a product requirement. Every developer surface should produce a stable object or plan an agent can consume.
 
 ## Product Verbs
 
@@ -28,7 +38,7 @@ Developer-first does not mean manual-only. Explore and Package should produce ma
 Studio is the developer-first Hudson AppShell surface. It contains:
 
 - Explore: session catalog, at-rest records, turn-ready manifests, Contextual atoms/buckets/slices.
-- Package: package editor, provenance review, freshness policy, compatibility preview.
+- Package: cartridge planner, provenance review, freshness policy, compatibility preview.
 - Launch preview: recipe slots, token budgets, target harness warnings, materialized sidecars.
 - Fork review: manifest diff, transfer decisions, lineage, expected truth level.
 
@@ -103,8 +113,8 @@ Existing code already supports the lower half:
 
 The next architecture layer should add:
 
-- package store and package schema validation
-- recipe compiler from packages and Contextual blocks
+- cartridge store and cartridge schema validation
+- recipe compiler from cartridges and Contextual blocks
 - launch planner and materializer
 - fork planner based on manifest diffs and transfer decisions
 
@@ -125,7 +135,7 @@ Existing stable objects:
 
 Target platform objects:
 
-- `ContextPackage`
+- `ContextCartridge`
 - `PackageVersion`
 - `PackagePart`
 - `PackageProvenance`
