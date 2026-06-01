@@ -8,10 +8,11 @@ Contextual is moving toward agentic context planning: inspect prior work, packag
 | --- | --- | --- |
 | [ENG-contextual-platform.md](./ENG-contextual-platform.md) | active vision | Product and engineering architecture for Explore, Package, Instantiate, and Fork |
 | [ENG-001-agentic-context-cartridge.md](./ENG-001-agentic-context-cartridge.md) | approved | Typed cartridge artifact and seed `agent-harness-context` record |
-| [ENG-002-live-cartridge-surfaces.md](./ENG-002-live-cartridge-surfaces.md) | approved | Live `/studio/cartridges/*` surfaces for cartridge detail, planner, health, launch, and fork |
+| [ENG-002-live-cartridge-surfaces.md](./ENG-002-live-cartridge-surfaces.md) | approved | Studio prototype renderings for cartridge detail, planner, health, launch, and fork |
 | [ENG-003-context-sculpt-and-boundary.md](./ENG-003-context-sculpt-and-boundary.md) | approved | Source selection, omission, reduction, and truthful boundary rules before cartridge compilation |
 | [ENG-004-collaborative-context-planner.md](./ENG-004-collaborative-context-planner.md) | approved | Staged user-agent planner that turns proposals and decisions into cartridge drafts |
 | [DESIGN-cartridge-surfaces.md](./DESIGN-cartridge-surfaces.md) | design spec | Claude sibling design direction for live cartridge product surfaces |
+| [../context-data/README.md](../context-data/README.md) | active source repo | Local repository of reusable context resources, source gaps, and tool-use examples |
 | [CONTRACT-session-package.md](./CONTRACT-session-package.md) | draft contract | Versioned package artifact with provenance, freshness, budgets, and compatibility |
 | [CONTRACT-launch-and-fork.md](./CONTRACT-launch-and-fork.md) | draft contract | Launch recipes, instantiation records, fork plans, and replay semantics |
 | [ENG-next-api-migration.md](./ENG-next-api-migration.md) | active plan | Route migration from the legacy Vite backend to the Next AppShell host |
@@ -41,7 +42,10 @@ Contextual is moving toward agentic context planning: inspect prior work, packag
 - `src/server/harnesses/*`: framework-neutral harness adapters and manifest builders.
 - `src/lib/sessionAnalysis.ts`: Contextual interpretation layer: atoms, slices, blocks, and recipe drafts.
 - `src/lib/contextCartridge.ts`: typed cartridge, planner, health, launch, and fork proposal objects.
+- `src/lib/contextCreation.ts`: agent-assisted context creation, profile compilation, test-drive, and session-thread draft helpers.
+- `src/server/context-design/index.ts`: API-backed context planner service with local evidence loading, model proposal, and heuristic fallback.
 - `src/data/contextCartridges.ts`: seed `agent-harness-context` cartridge.
+- `src/data/contextResourceRepository.ts`: seed local resource repo and agent-assisted context draft.
 - `src/data/packages.ts`: legacy prototype package seed data kept for the current Designer surface.
 - `src/contextualApp/*`: Hudson AppShell surfaces and navigation vocabulary.
 

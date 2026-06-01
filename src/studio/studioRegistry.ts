@@ -4,8 +4,12 @@ import { createStatusPalette } from "studio/atoms";
 import { CONTEXT_CARTRIDGES } from "@/data/contextCartridges";
 import type { CtxDoc } from "@/studio/ctxDocs";
 
-export type StudioBucket = "foundations" | "presentations" | "cartridges" | "studies";
-export type StudioSurface = "vision" | "engineering" | "product" | "design";
+export type StudioBucket =
+  | "foundations"
+  | "presentations"
+  | "cartridges"
+  | "studies";
+export type StudioSurface = "vision" | "engineering" | "prototype" | "design";
 export type StudioStatus = "active" | "draft" | "study";
 export type ContextualStudioPage = StudioPage<StudioBucket, StudioSurface, StudioStatus>;
 
@@ -28,6 +32,7 @@ export interface Study {
 }
 
 export type CartridgeRouteKind = "index" | "detail" | "planner" | "health" | "launch" | "fork";
+export type ContextDesignerRouteKind = "create" | "test-drive";
 
 export interface CartridgeRoute {
   kind: CartridgeRouteKind;
@@ -39,7 +44,17 @@ export interface CartridgeRoute {
   source: string[];
 }
 
+export interface ContextDesignerRoute {
+  kind: ContextDesignerRouteKind;
+  title: string;
+  href: string;
+  summary: string;
+  status: StudioStatus;
+  source: string[];
+}
+
 export const HOME_HREF = "/studio";
+export const CONTEXT_DESIGNER_HREF = "/studio/context-designer";
 export const CARTRIDGES_HREF = "/studio/cartridges";
 
 function summaryForDoc(doc: CtxDoc): string {
@@ -118,6 +133,31 @@ export const cartridgeRoutes: readonly CartridgeRoute[] = [
   ]),
 ];
 
+export const contextDesignerRoutes: readonly ContextDesignerRoute[] = [
+  {
+    kind: "create",
+    title: "Context Creation Lab",
+    href: CONTEXT_DESIGNER_HREF,
+    status: "study",
+    source: [
+      "src/data/contextResourceRepository.ts",
+      "src/lib/contextCreation.ts",
+      "context-data/README.md",
+    ],
+    summary:
+      "Static Studio mirror for agent-assisted source selection, sculpting, and profile compilation. The main app owns live proposals and session creation.",
+  },
+  {
+    kind: "test-drive",
+    title: "Context Test Drive Lab",
+    href: `${CONTEXT_DESIGNER_HREF}/test-drive`,
+    status: "study",
+    source: ["src/data/contextResourceRepository.ts", "src/lib/contextCreation.ts"],
+    summary:
+      "Dry-run checks and scenario prompts for validating a context shape before it graduates into the main app.",
+  },
+];
+
 export const studies: readonly Study[] = [
   {
     slug: "planner-workbench",
@@ -175,8 +215,8 @@ export function surfaceLabel(surface: StudioSurface): string {
       return "Vision";
     case "engineering":
       return "Engineering";
-    case "product":
-      return "Product";
+    case "prototype":
+      return "Prototype";
     case "design":
       return "Design";
   }
@@ -195,6 +235,7 @@ export interface ContextualRegistry {
   >;
   presentationForHref: (href: string) => PresentationRef | undefined;
   cartridgeRouteForHref: (href: string) => CartridgeRoute | undefined;
+  contextDesignerRouteForHref: (href: string) => ContextDesignerRoute | undefined;
   studyForHref: (href: string) => Study | undefined;
 }
 
@@ -230,12 +271,23 @@ export function buildContextualRegistry(
         source: p.source,
       }),
     ),
+    ...contextDesignerRoutes.map(
+      (route): ContextualStudioPage => ({
+        href: route.href,
+        label: route.title,
+        bucket: "studies",
+        surface: "design",
+        status: route.status,
+        blurb: route.summary,
+        source: route.source,
+      }),
+    ),
     ...cartridgeRoutes.map(
       (route): ContextualStudioPage => ({
         href: route.href,
         label: route.title,
         bucket: "cartridges",
-        surface: "product",
+        surface: "prototype",
         status: route.status,
         blurb: route.summary,
         source: route.source,
@@ -256,7 +308,7 @@ export function buildContextualRegistry(
 
   const registry = createRegistry<StudioBucket, StudioSurface, StudioStatus>({
     pages: STUDIO_PAGES,
-    surfaceOrder: ["vision", "engineering", "product", "design"],
+    surfaceOrder: ["vision", "engineering", "prototype", "design"],
     defaultSurface: "engineering",
     bucketLabel,
     surfaceLabel,
@@ -274,6 +326,8 @@ export function buildContextualRegistry(
     },
     cartridgeRouteForHref: (href) =>
       cartridgeRoutes.find((route) => route.href === href),
+    contextDesignerRouteForHref: (href) =>
+      contextDesignerRoutes.find((route) => route.href === href),
     studyForHref: (href) => studies.find((study) => study.href === href),
   };
 }

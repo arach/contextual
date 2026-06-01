@@ -6,9 +6,11 @@ Last updated: 2026-05-30
 
 ## Purpose
 
-The `/studio` route is a Hudson-backed Studio app for the Contextual pivot from session explorer to agentic context planning.
+The `/studio` route is a Hudson-backed design and experimentation surface for
+the Contextual pivot from session explorer to agentic context planning.
 
-It maps the concepts from the current product conversation into implementation proposals:
+It maps the concepts from the current product conversation into proposal
+material and prototype renderings:
 
 - context cartridges as the primary object
 - collaborative planning instead of static package editing
@@ -25,6 +27,8 @@ GET /studio/ctx-002
 GET /studio/ctx-003
 GET /studio/ctx-004
 GET /studio/ctx-005
+GET /studio/context-designer
+GET /studio/context-designer/test-drive
 GET /studio/cartridges
 GET /studio/cartridges/agent-harness-context
 GET /studio/cartridges/agent-harness-context/planner
@@ -43,7 +47,11 @@ src/studio/studioRegistry.ts
 src/studio/StudioPages.tsx
 ```
 
-This route is separate from the primary Contextual product route at `/`, but it now uses the shared `studio/app-shell` adapter so Hudson AppShell chrome, registry navigation, status pills, page strip, and route structure come from the shared Studio package.
+This route is separate from the primary Contextual product route at `/`, which
+owns real session creation and product state. Studio uses the shared
+`studio/app-shell` adapter so Hudson AppShell chrome, registry navigation,
+status pills, page strip, and route structure come from the shared Studio
+package, but Studio remains the lab.
 
 ## Proposal Map
 
@@ -73,20 +81,25 @@ The route includes two embedded studies:
 - **Planner Workbench**: intent, scope, targets, evals, and load profiles for a seed `agent-harness-context` cartridge.
 - **Health Console**: metrics and rebuild recommendation for whether a starter context is worth loading.
 
-These are not final UI components. They establish the product shape and the implementation vocabulary. The live cartridge routes now supersede them for the seed `agent-harness-context` cartridge.
+These are not final UI components. They establish the product shape and the
+implementation vocabulary. When a flow graduates, its product behavior belongs
+in the main app rather than in `/studio`.
 
 ## Next Slice
 
-1. Add `ContextSculpt` types and boundary-rule helpers from `ENG-003`.
-2. Expand planner stages and decision persistence from `ENG-004`.
-3. Move the seed cartridge from local data into an append-friendly store.
-4. Add API routes for cartridge read, planner, sculpt, health, launch plan, and fork plan.
-5. Compile `RecipeDraft` blocks into launch slots.
-6. Add execution records after plan preview is stable.
+1. Keep Studio focused on proposal renderings and test-drive studies.
+2. Move agent-assisted context creation into the main app designer flow.
+3. Add `ContextSculpt` types and boundary-rule helpers from `ENG-003`.
+4. Expand planner stages and decision persistence from `ENG-004`.
+5. Move the seed cartridge from local data into an append-friendly store.
+6. Add API routes for cartridge read, planner, sculpt, health, launch plan, and fork plan.
+7. Compile `RecipeDraft` blocks into launch slots.
+8. Add execution records after plan preview is stable.
 
 ## Design Constraints
 
 - Keep the current `/` AppShell route stable.
 - Do not rename persisted `session`, `designer`, or `analysis` mode IDs yet.
 - Treat Explorer as a source/evidence layer, not the primary product destination.
+- Treat Studio as the lab: no durable product state, no competing session creation flow.
 - Treat `pi-ai` as a portable context handoff target and `pi-coding-agent` as the native tree/fork target.

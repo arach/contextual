@@ -38,6 +38,7 @@ import {
   CARTRIDGES_HREF,
   HOME_HREF,
   cartridgeRoutes,
+  contextDesignerRoutes,
   statusPalette,
   type CartridgeRoute,
   type PresentationRef,
@@ -97,6 +98,8 @@ export function NorthStarPage({
         <p className="mt-3 max-w-[64ch] text-[13px] leading-[1.65] text-studio-ink-faint">
           Contextual plans what an agent starts with. It doesn't try to manage
           what happens inside the model — that's the provider's job.
+          The main app is the product; Studio is where proposals and studies
+          are made legible before they graduate.
         </p>
       </header>
 
@@ -120,6 +123,35 @@ export function NorthStarPage({
               <span className="ml-2 font-mono text-[10.5px] text-studio-ink-faint/70">
                 ({verb.owner.toLowerCase()})
               </span>
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      <Section label="Studio experiments">
+        <ul className="-mx-3 flex flex-col">
+          {contextDesignerRoutes.map((route) => (
+            <li key={route.href}>
+              <Link
+                href={route.href}
+                className="group grid gap-3 rounded-md px-3 py-2.5 transition-colors hover:bg-studio-chip-bg md:grid-cols-[140px_1fr_20px]"
+              >
+                <span className="font-mono text-[11px] text-studio-ink-faint group-hover:text-studio-ink">
+                  {route.kind}
+                </span>
+                <span>
+                  <span className="block text-[14px] text-studio-ink-strong">
+                    {route.title}
+                  </span>
+                  <span className="mt-1 block max-w-[72ch] text-[12.5px] leading-[1.55] text-studio-ink-faint">
+                    {route.summary}
+                  </span>
+                </span>
+                <ArrowRight
+                  size={14}
+                  className="self-center text-studio-ink-faint transition-transform group-hover:translate-x-1 group-hover:text-studio-ink"
+                />
+              </Link>
             </li>
           ))}
         </ul>

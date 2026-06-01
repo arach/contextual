@@ -8,8 +8,18 @@ import { useContextualApp } from "@/contextualApp/ContextualProvider";
 import { useExploreKeyboardNav } from "@/hooks/useExploreKeyboardNav";
 
 export function AppContent() {
-  const { mode, explore, designer, store, thinking, inFlightTokens, dispatch, treeOpen, setTreeOpen } =
-    useContextualApp();
+  const {
+    mode,
+    explore,
+    designer,
+    store,
+    thinking,
+    inFlightTokens,
+    dispatch,
+    createDesignedSession,
+    treeOpen,
+    setTreeOpen,
+  } = useContextualApp();
 
   useExploreKeyboardNav(explore, mode === "analysis");
 
@@ -26,7 +36,10 @@ export function AppContent() {
             onDispatch={dispatch}
           />
         ) : mode === "designer" ? (
-          <DesignerWorkbench state={designer} />
+          <DesignerWorkbench
+            state={designer}
+            onCreateSession={createDesignedSession}
+          />
         ) : (
           <SessionAnalysisWorkbench
             state={explore}

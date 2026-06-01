@@ -6,9 +6,14 @@ import { StudioHudsonApp } from "studio/app-shell";
 import { NextRouterProvider } from "studio/router/next";
 
 import { CONTEXTUAL_THEME_DEFAULTS } from "@/contextualApp/themeConfig";
+import {
+  ContextDesignerPage,
+  ContextTestDrivePage,
+} from "@/studio/ContextDesignerPages";
 import type { CtxDoc } from "@/studio/ctxDocs";
 import {
   BUCKETS,
+  CONTEXT_DESIGNER_HREF,
   HOME_HREF,
   STATUS_COLORS,
   CARTRIDGES_HREF,
@@ -46,6 +51,13 @@ function renderStudioPage({
     if (!doc) return <NotFoundPage />;
     return <PresentationPage doc={doc} />;
   }
+  const designerRoute = ctx.contextDesignerRouteForHref(pathname);
+  if (designerRoute) {
+    if (designerRoute.kind === "test-drive") {
+      return <ContextTestDrivePage route={designerRoute} />;
+    }
+    return <ContextDesignerPage route={designerRoute} />;
+  }
   const cartridgeRoute = ctx.cartridgeRouteForHref(pathname);
   if (cartridgeRoute) return <CartridgePage route={cartridgeRoute} />;
   const study = ctx.studyForHref(pathname);
@@ -58,6 +70,11 @@ const studioCommands = [
     id: "contextual-studio:north-star",
     label: "Open Overview",
     action: () => window.location.assign(HOME_HREF),
+  },
+  {
+    id: "contextual-studio:context-designer",
+    label: "Open Context Lab",
+    action: () => window.location.assign(CONTEXT_DESIGNER_HREF),
   },
   {
     id: "contextual-studio:cartridges",
@@ -86,10 +103,10 @@ export function ContextualStudioApp({
         id: "contextual-studio",
         name: "Contextual Studio",
         description:
-          "Plan the context an agent starts with. Planning notes and live packages.",
+          "Design and test-drive context planning experiments before they graduate into the main app.",
         icon: createElement(Layers, { size: 14 }),
         agentContext:
-          "Contextual Studio is the planning surface. CTX pages are working notes on context-package planning; cartridges are live product artifacts.",
+          "Contextual Studio is the design and experimentation surface. The main app owns real session creation; Studio mirrors agent-assisted context drafts, CTX notes, and cartridge studies.",
         leftPanel: {
           title: "Studio",
           icon: createElement(Compass, { size: 12 }),

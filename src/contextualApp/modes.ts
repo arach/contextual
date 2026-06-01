@@ -1,5 +1,5 @@
 export type AppMode = "session" | "designer" | "analysis";
-export type AppSurface = "studio" | "runtime";
+export type AppSurface = "main" | "runtime";
 export type AppVerb = "explore" | "package" | "instantiate";
 
 export interface AppModeMeta {
@@ -12,13 +12,13 @@ export interface AppModeMeta {
 export const APP_MODE_META: Record<AppMode, AppModeMeta> = {
   analysis: {
     label: "Explore",
-    surface: "studio",
+    surface: "main",
     verb: "explore",
     primaryUser: "developer",
   },
   designer: {
     label: "Package",
-    surface: "studio",
+    surface: "main",
     verb: "package",
     primaryUser: "developer",
   },

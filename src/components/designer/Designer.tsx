@@ -9,11 +9,23 @@
 import { useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import { SidePanel } from "hudsonkit/chrome";
-import { Layers, Settings } from "lucide-react";
+import { Bot, CheckCircle2, FlaskConical, Layers, Rocket, Settings } from "lucide-react";
 
+import {
+  AGENT_ASSISTED_CONTEXT_DRAFT,
+  LOCAL_CONTEXT_RESOURCES,
+} from "@/data/contextResourceRepository";
 import { PACKAGES, type ContextPackage } from "@/data/packages";
 import { MODULE_LIBRARY } from "@/data/modules";
 import type { ContextModule } from "@/types";
+import { proposeContextDesign } from "@/lib/contextDesignClient";
+import {
+  profileDraftTokenTotal,
+  proposeAgentContextDraft,
+  selectedResourcesForDraft,
+  type AgentAssistedContextDraft,
+  type ContextDesignProposalResponse,
+} from "@/lib/contextCreation";
 import { fmtTokens, sumTokens } from "@/lib/tokens";
 
 import { PackageList } from "@/components/designer/PackageList";
@@ -93,9 +105,70 @@ export function DesignerChrome({
   );
 }
 
-export function DesignerWorkbench({ state }: { state: DesignerState }) {
+export function DesignerWorkbench({
+  state,
+  onCreateSession,
+}: {
+  state: DesignerState;
+  onCreateSession?: (draft: AgentAssistedContextDraft) => void;
+}) {
   const { active: pkg, modules } = state;
   const totalTokens = sumTokens(modules);
+  const [objective, setObjective] = useState(AGENT_ASSISTED_CONTEXT_DRAFT.objective);
+  const [draft, setDraft] = useState<AgentAssistedContextDraft>(
+    AGENT_ASSISTED_CONTEXT_DRAFT,
+  );
+  const [agentResult, setAgentResult] = useState<ContextDesignProposalResponse | null>(null);
+  const [agentError, setAgentError] = useState<string | null>(null);
+  const [isAskingAgent, setIsAskingAgent] = useState(false);
+  const [showTestDrive, setShowTestDrive] = useState(true);
+  const selectedResources = selectedResourcesForDraft(draft, LOCAL_CONTEXT_RESOURCES);
+  const testDriveTokens = profileDraftTokenTotal(draft, draft.testDrive.profileId);
+  const loadedEvidence = agentResult?.evidence.filter((item) => item.state === "loaded").length ?? 0;
+  const agentModeLabel = isAskingAgent
+    ? "planning"
+    : agentResult?.mode === "agent"
+      ? agentResult.model ?? "agent"
+      : agentResult?.mode === "heuristic"
+        ? "heuristic fallback"
+        : "seed draft";
+
+  async function askAgent() {
+    setIsAskingAgent(true);
+    setAgentError(null);
+    try {
+      const result = await proposeContextDesign({
+        objective,
+        target: draft.target,
+        profileId: draft.testDrive.profileId,
+      });
+      setDraft(result.draft);
+      setAgentResult(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const nextDraft = proposeAgentContextDraft(
+        {
+          objective,
+          target: draft.target,
+          profileId: draft.testDrive.profileId,
+        },
+        LOCAL_CONTEXT_RESOURCES,
+      );
+      setDraft(nextDraft);
+      setAgentResult({
+        draft: nextDraft,
+        mode: "heuristic",
+        generatedAt: new Date().toISOString(),
+        evidence: [],
+        warnings: [`Agent route unavailable: ${message}`],
+      });
+      setAgentError(message);
+    } finally {
+      setIsAskingAgent(false);
+      setShowTestDrive(true);
+    }
+  }
+
   return (
     <section className="flex-1 min-w-0 flex flex-col bg-[var(--hg-bg)] overflow-auto">
       <div className="flex-shrink-0 px-9 pt-7 pb-4 border-b border-[var(--hg-line)] bg-[var(--hg-surface-2)]">
@@ -139,6 +212,173 @@ export function DesignerWorkbench({ state }: { state: DesignerState }) {
         </div>
       </div>
 
+      <div className="flex-shrink-0 px-9 py-4 border-b border-[var(--hg-line)] bg-[var(--hg-surface)]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 hg-mono text-[10px] uppercase tracking-[0.14em] text-[var(--hg-muted)]">
+              <Bot size={12} className="text-[var(--hg-accent)]" />
+              <span>{draft.agent.handle}</span>
+              <span>·</span>
+              <span>{selectedResources.filter((selection) => selection.action !== "drop").length} selected sources</span>
+              <span>·</span>
+              <span>{fmtTokens(testDriveTokens)} test profile</span>
+              <span>·</span>
+              <span>{agentModeLabel}</span>
+            </div>
+            <label className="sr-only" htmlFor="context-objective">
+              Context objective
+            </label>
+            <textarea
+              id="context-objective"
+              value={objective}
+              onChange={(event) => setObjective(event.currentTarget.value)}
+              className="mt-3 min-h-[72px] w-full resize-y border border-[var(--hg-line)] bg-[var(--hg-bg)] px-3 py-2 text-[13px] leading-[1.5] text-[var(--hg-ink)] outline-none focus:border-[var(--hg-accent)]"
+            />
+            <div className="mt-2 text-[13px] leading-[1.55] text-[var(--hg-ink-2)] max-w-[880px]">
+              {draft.agent.summary}
+            </div>
+            {agentResult || agentError ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2 hg-mono text-[10px] uppercase tracking-[0.12em] text-[var(--hg-muted)]">
+                {agentResult ? (
+                  <>
+                    <span>{loadedEvidence} loaded resources</span>
+                    <span>·</span>
+                    <span>{agentResult.warnings.length} warning{agentResult.warnings.length === 1 ? "" : "s"}</span>
+                  </>
+                ) : null}
+                {agentError ? (
+                  <>
+                    <span>·</span>
+                    <span className="text-[var(--status-warn-fg)]">route fallback</span>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={askAgent}
+              disabled={isAskingAgent}
+              className="hg-mono inline-flex h-8 items-center gap-2 border border-[var(--hg-hairline)] px-3 text-[10px] uppercase tracking-[0.12em] text-[var(--hg-ink-2)] hover:border-[var(--hg-accent)] hover:text-[var(--hg-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Bot size={13} />
+              {isAskingAgent ? "asking" : "ask agent"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTestDrive((visible) => !visible)}
+              className="hg-mono inline-flex h-8 items-center gap-2 border border-[var(--hg-hairline)] px-3 text-[10px] uppercase tracking-[0.12em] text-[var(--hg-ink-2)] hover:border-[var(--hg-accent)] hover:text-[var(--hg-accent)]"
+            >
+              <FlaskConical size={13} />
+              test drive
+            </button>
+            <button
+              type="button"
+              onClick={() => onCreateSession?.(draft)}
+              className="hg-mono inline-flex h-8 items-center gap-2 border border-[var(--hg-accent)] bg-[var(--hg-accent)]/10 px-3 text-[10px] uppercase tracking-[0.12em] text-[var(--hg-accent)] hover:bg-[var(--hg-accent)]/15 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!onCreateSession}
+            >
+              <Rocket size={13} />
+              create session
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-shrink-0 border-b border-[var(--hg-line)] bg-[var(--hg-bg)] px-9 py-4">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+          <div>
+            <div className="hg-mono mb-2 text-[10px] uppercase tracking-[0.16em] text-[var(--hg-muted)]">
+              agent sculpt
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              {selectedResources.map((selection) => (
+                <div
+                  key={selection.resourceId}
+                  className="border border-[var(--hg-line)] bg-[var(--hg-surface)] px-3 py-2"
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className={`hg-mono text-[10px] uppercase tracking-[0.12em] ${actionTone(selection.action)}`}>
+                      {selection.action}
+                    </span>
+                    <span className="truncate text-[12px] font-medium text-[var(--hg-ink)]">
+                      {selection.resource.title}
+                    </span>
+                    <span className="ml-auto hg-mono text-[10px] text-[var(--hg-muted)]">
+                      {fmtTokens(selection.outputTokens)}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[11.5px] leading-[1.45] text-[var(--hg-muted)]">
+                    {selection.reason}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {showTestDrive ? (
+            <div>
+              <div className="hg-mono mb-2 text-[10px] uppercase tracking-[0.16em] text-[var(--hg-muted)]">
+                test drive
+              </div>
+              <div className="space-y-2">
+                {draft.testDrive.checks.map((check) => (
+                  <div
+                    key={check.id}
+                    className="border border-[var(--hg-line)] bg-[var(--hg-surface)] px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={12} className={toneClass(check.tone)} />
+                      <span className={`hg-mono text-[10px] uppercase tracking-[0.12em] ${toneClass(check.tone)}`}>
+                        {check.label}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[11.5px] leading-[1.45] text-[var(--hg-muted)]">
+                      {check.detail}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {agentResult ? (
+          <div className="mt-5 border-t border-[var(--hg-line)] pt-4">
+            <div className="hg-mono mb-2 text-[10px] uppercase tracking-[0.16em] text-[var(--hg-muted)]">
+              source evidence
+            </div>
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+              {agentResult.evidence.map((evidence) => (
+                <div
+                  key={evidence.resourceId}
+                  className="border border-[var(--hg-line)] bg-[var(--hg-surface)] px-3 py-2"
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className={`hg-mono text-[10px] uppercase tracking-[0.12em] ${evidenceTone(evidence.state)}`}>
+                      {evidence.state}
+                    </span>
+                    <span className="truncate text-[12px] font-medium text-[var(--hg-ink)]">
+                      {evidence.title}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-2 hg-mono text-[10px] uppercase tracking-[0.1em] text-[var(--hg-muted)]">
+                    <span>{formatChars(evidence.chars)}</span>
+                    {evidence.contentHash ? <span>{evidence.contentHash}</span> : null}
+                  </div>
+                  {evidence.note ? (
+                    <div className="mt-1 text-[11.5px] leading-[1.45] text-[var(--hg-muted)]">
+                      {evidence.note}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
       <div className="flex-1 px-9 py-7 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-5 content-start">
         {modules.map((m: ContextModule) => (
           <PackageCard key={m.id} module={m} />
@@ -150,4 +390,50 @@ export function DesignerWorkbench({ state }: { state: DesignerState }) {
       </div>
     </section>
   );
+}
+
+function actionTone(action: string): string {
+  switch (action) {
+    case "keep":
+      return "text-[var(--status-ok-fg)]";
+    case "compress":
+      return "text-[var(--hg-ink)]";
+    case "refresh":
+      return "text-[var(--status-warn-fg)]";
+    case "drop":
+      return "text-[var(--hg-muted)]";
+    default:
+      return "text-[var(--hg-muted)]";
+  }
+}
+
+function toneClass(tone: string): string {
+  switch (tone) {
+    case "ok":
+      return "text-[var(--status-ok-fg)]";
+    case "warn":
+      return "text-[var(--status-warn-fg)]";
+    case "error":
+      return "text-[var(--status-error-fg)]";
+    default:
+      return "text-[var(--hg-muted)]";
+  }
+}
+
+function evidenceTone(state: string): string {
+  switch (state) {
+    case "loaded":
+      return "text-[var(--status-ok-fg)]";
+    case "metadata-only":
+      return "text-[var(--status-warn-fg)]";
+    case "missing":
+      return "text-[var(--status-error-fg)]";
+    default:
+      return "text-[var(--hg-muted)]";
+  }
+}
+
+function formatChars(chars: number): string {
+  if (chars >= 1000) return `${(chars / 1000).toFixed(1).replace(/\.0$/, "")}k chars`;
+  return `${chars} chars`;
 }

@@ -33,14 +33,30 @@ Developer-first does not mean manual-only. Explore and Package should produce ma
 
 ## Surfaces
 
-### Studio
+### Main App
 
-Studio is the developer-first Hudson AppShell surface. It contains:
+The main app at `/` is the product surface. It owns real user workflows and
+state transitions:
 
 - Explore: session catalog, at-rest records, turn-ready manifests, Contextual atoms/buckets/slices.
 - Package: cartridge planner, provenance review, freshness policy, compatibility preview.
-- Launch preview: recipe slots, token budgets, target harness warnings, materialized sidecars.
-- Fork review: manifest diff, transfer decisions, lineage, expected truth level.
+- Instantiate: agent-assisted context design, profile compilation, launch plan creation, and real session creation.
+- Fork: manifest diff, transfer decisions, lineage, expected truth level, and the selected target run.
+
+The main app can borrow patterns proven in Studio, but product behavior should
+land here first once a concept graduates from study.
+
+### Studio
+
+Studio at `/studio` is the design and experimentation surface. It contains:
+
+- CTX presentations and engineering proposal renderings.
+- Prototype cartridge studies and route maps.
+- Dry-run views for planner, health, launch, and fork concepts.
+- Mirrors of agent-assisted context drafts so the team can inspect shape, copy, and tradeoffs.
+
+Studio must not become a parallel product app. It can render proposed artifacts,
+but real session creation and persistent product state belong to the main app.
 
 ### Runtime
 
@@ -88,8 +104,8 @@ The lower layers preserve what exists. The upper layers explain, curate, and com
 ## Architecture
 
 ```txt
-Hudson AppShell Studio
-  Explore / Package / Launch Preview / Fork Review
+Contextual main app
+  Explore / Package / Instantiate / Fork
         |
         v
 Contextual server modules
@@ -110,6 +126,8 @@ Existing code already supports the lower half:
 - `src/lib/harnessContract.ts`: wire contract for the harness read API.
 - `src/server/session-analysis`: Contextual atom and recipe-draft interpretation.
 - `src/components/analysis`: Explore workbench with at-rest, turn-ready, and contextual modes.
+- `src/components/designer`: main-app context designer and session creation workbench.
+- `src/studio`: design studies and proposal renderings only.
 
 The next architecture layer should add:
 

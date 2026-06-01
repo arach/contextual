@@ -15,7 +15,12 @@ import { useSessionAnalysisState } from "@/components/analysis/SessionAnalysis";
 import type { ExploreAnalysisState } from "@/components/analysis/SessionAnalysis";
 import { useDesignerState } from "@/components/designer/Designer";
 import type { AppMode } from "@/contextualApp/modes";
+import { AGENT_ASSISTED_CONTEXT_DRAFT } from "@/data/contextResourceRepository";
 import { buildManifest } from "@/lib/derive";
+import {
+  buildDesignedSession,
+  type AgentAssistedContextDraft,
+} from "@/lib/contextCreation";
 import { tokFor } from "@/lib/tokens";
 import { dispatch as dispatchBackend, branch as branchBackend } from "@/lib/backends/client";
 import { useThreadStore } from "@/state/useThreadStore";
@@ -30,6 +35,7 @@ export interface ContextualAppState {
   syncTick: number;
   dispatch: () => Promise<void>;
   branchAndFork: () => Promise<void>;
+  createDesignedSession: (draft?: AgentAssistedContextDraft) => void;
   treeOpen: boolean;
   setTreeOpen: (open: boolean) => void;
   inFlightTokens: number;
@@ -56,7 +62,23 @@ export function ContextualProvider({ children }: { children: ReactNode }) {
   const [thinking, setThinking] = useState(false);
   const [syncTick, setSyncTick] = useState(0);
   const [treeOpen, setTreeOpen] = useState(false);
+  const initialModeAppliedRef = useRef(false);
   const lastAnalysisSessionRef = useRef("");
+
+  useEffect(() => {
+    if (initialModeAppliedRef.current) return;
+    const requested = new URLSearchParams(window.location.search).get("mode");
+    if (requested === "analysis" || requested === "designer" || requested === "session") {
+      initialModeAppliedRef.current = true;
+      const timeout = window.setTimeout(() => {
+        setMode(requested);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("mode");
+        window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+      }, 0);
+      return () => window.clearTimeout(timeout);
+    }
+  }, [setMode]);
 
   useEffect(() => {
     if (mode !== "analysis" || !explore.activeId) return;
@@ -105,6 +127,16 @@ export function ContextualProvider({ children }: { children: ReactNode }) {
     }
   }, [store]);
 
+  const createDesignedSession = useCallback((draft = AGENT_ASSISTED_CONTEXT_DRAFT) => {
+    store.createDesignedSession(
+      buildDesignedSession(draft, {
+        now: new Date().toISOString(),
+        profileId: draft.testDrive.profileId,
+      }),
+    );
+    setMode("session");
+  }, [setMode, store]);
+
   const value = useMemo<ContextualAppState>(
     () => ({
       mode,
@@ -116,6 +148,7 @@ export function ContextualProvider({ children }: { children: ReactNode }) {
       syncTick,
       dispatch,
       branchAndFork,
+      createDesignedSession,
       treeOpen,
       setTreeOpen,
       inFlightTokens,
@@ -130,6 +163,7 @@ export function ContextualProvider({ children }: { children: ReactNode }) {
       syncTick,
       dispatch,
       branchAndFork,
+      createDesignedSession,
       treeOpen,
       inFlightTokens,
     ],

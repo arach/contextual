@@ -2,6 +2,7 @@
 // (and easy to test) — every interaction in the UI maps to exactly one action.
 
 import { useCallback, useMemo, useReducer } from "react";
+import type { DesignedSession } from "@/lib/contextCreation";
 import type { BackendConfig, ContextModule, LastUsage, SoftItem, Thread } from "@/types";
 import { MODULE_LIBRARY } from "@/data/modules";
 import { initialThreads } from "@/data/threads";
@@ -23,6 +24,7 @@ type Action =
   | { type: "unpinFixed"; moduleId: string }
   | { type: "drop"; id: string; zone: "fixed" | "soft" }
   | { type: "appendSoft"; item: SoftItem; bumpTurn?: boolean }
+  | { type: "createDesignedSession"; session: DesignedSession }
   | { type: "setBackendConfig"; v: BackendConfig }
   | { type: "setLastUsage"; v: LastUsage };
 
@@ -116,6 +118,19 @@ function reducer(state: State, action: Action): State {
         turn: action.bumpTurn ? t.turn + 1 : t.turn,
       }));
 
+    case "createDesignedSession":
+      for (const module of action.session.modules) {
+        MODULE_LIBRARY[module.id] = module;
+      }
+      return {
+        ...state,
+        activeId: action.session.thread.id,
+        threads: [
+          action.session.thread,
+          ...state.threads.filter((thread) => thread.id !== action.session.thread.id),
+        ],
+      };
+
     case "setBackendConfig":
       return patchActive(state, { backendConfig: action.v });
 
@@ -148,6 +163,8 @@ export interface ThreadStore {
   setBackendConfig: (v: BackendConfig) => void;
   /** Persist usage telemetry from the most recent dispatch. */
   setLastUsage: (v: LastUsage) => void;
+  /** Create and select a thread compiled by the context designer. */
+  createDesignedSession: (session: DesignedSession) => void;
 }
 
 export function useThreadStore(): ThreadStore {
@@ -175,6 +192,10 @@ export function useThreadStore(): ThreadStore {
   );
   const setLastUsage = useCallback(
     (v: LastUsage) => dispatch({ type: "setLastUsage", v }),
+    [],
+  );
+  const createDesignedSession = useCallback(
+    (session: DesignedSession) => dispatch({ type: "createDesignedSession", session }),
     [],
   );
 
@@ -224,5 +245,6 @@ export function useThreadStore(): ThreadStore {
     appendModelReply,
     setBackendConfig,
     setLastUsage,
+    createDesignedSession,
   };
 }
