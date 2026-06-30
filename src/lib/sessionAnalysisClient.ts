@@ -7,8 +7,14 @@ import type {
   SessionPullResponse,
 } from "@/lib/sessionAnalysis";
 
-export async function fetchSessionAnalysis(): Promise<SessionAnalysisResponse> {
-  const res = await fetch("/api/session-analysis");
+/** Appends `?demo=1` when demo mode is active so the server serves the curated corpus. */
+function demoQuery(demo?: boolean): string {
+  return demo ? "demo=1" : "";
+}
+
+export async function fetchSessionAnalysis(demo?: boolean): Promise<SessionAnalysisResponse> {
+  const qs = demoQuery(demo);
+  const res = await fetch(`/api/session-analysis${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error(`session analysis failed: ${res.status}`);
   return (await res.json()) as SessionAnalysisResponse;
 }
@@ -17,11 +23,13 @@ export async function fetchSessionCatalog(params?: {
   q?: string;
   project?: string;
   limit?: number;
+  demo?: boolean;
 }): Promise<SessionCatalogResponse> {
   const search = new URLSearchParams();
   if (params?.q) search.set("q", params.q);
   if (params?.project) search.set("project", params.project);
   if (params?.limit) search.set("limit", String(params.limit));
+  if (params?.demo) search.set("demo", "1");
   const qs = search.toString();
   const res = await fetch(`/api/session-analysis/catalog${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error(`session catalog failed: ${res.status}`);
@@ -30,8 +38,10 @@ export async function fetchSessionCatalog(params?: {
 
 export async function pullSessionAnalysis(
   request: SessionPullRequest,
+  demo?: boolean,
 ): Promise<SessionPullResponse> {
-  const res = await fetch("/api/session-analysis/pull", {
+  const qs = demoQuery(demo);
+  const res = await fetch(`/api/session-analysis/pull${qs ? `?${qs}` : ""}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(request),
@@ -47,8 +57,10 @@ export async function pullSessionAnalysis(
 
 export async function askSessionAnalysis(
   request: SessionAnalysisAskRequest,
+  demo?: boolean,
 ): Promise<SessionAnalysisAskResponse> {
-  const res = await fetch("/api/session-analysis/ask", {
+  const qs = demoQuery(demo);
+  const res = await fetch(`/api/session-analysis/ask${qs ? `?${qs}` : ""}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(request),

@@ -25,7 +25,7 @@ export function Manifest({
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className="absolute bottom-full right-0 mb-2 w-[380px] max-h-[60vh] overflow-auto bg-[var(--hg-surface)] border border-[var(--hg-line)] rounded-[2px] px-3.5 py-3 shadow-[0_12px_30px_-16px_rgba(0,0,0,0.7)] z-50"
+      className="absolute bottom-full right-0 mb-2 w-[380px] max-h-[60vh] overflow-auto bg-[var(--hg-surface)] border border-[var(--hg-line)] rounded-[2px] px-3.5 py-3 shadow-[var(--ctx-pop-shadow)] z-50"
     >
       <h4 className="m-0 mb-2 text-[11px] text-neutral-500 flex items-baseline gap-2">
         <b className="text-neutral-300">Call {callNumber}</b>

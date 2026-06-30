@@ -152,7 +152,7 @@ export function BackendChip({ value, onChange }: BackendChipProps) {
         <span className="text-[var(--hg-hairline)]">▾</span>
       </button>
       {open && (
-        <div className="absolute left-0 top-[calc(100%+6px)] z-50 w-[280px] bg-[var(--hg-surface)] border border-[var(--hg-line)] rounded-[2px] shadow-[0_12px_30px_-16px_rgba(0,0,0,0.7)] p-1">
+        <div className="absolute left-0 top-[calc(100%+6px)] z-50 w-[280px] bg-[var(--hg-surface)] border border-[var(--hg-line)] rounded-[2px] shadow-[var(--ctx-pop-shadow)] p-1">
           {OPTIONS.map((opt) => {
             const selected = isSelected(opt, value);
             const needsAuth = opt.oauthProvider && !authed[opt.oauthProvider];

@@ -11,6 +11,8 @@ import {
   type ReactNode,
 } from "react";
 import { usePersistentState } from "hudsonkit";
+import { useDemoMode } from "@/contextualApp/useDemoMode";
+import { useContextualFlag } from "@/contextualApp/flags";
 import { useSessionAnalysisState } from "@/components/analysis/SessionAnalysis";
 import type { ExploreAnalysisState } from "@/components/analysis/SessionAnalysis";
 import { useDesignerState } from "@/components/designer/Designer";
@@ -38,7 +40,20 @@ export interface ContextualAppState {
   createDesignedSession: (draft?: AgentAssistedContextDraft) => void;
   treeOpen: boolean;
   setTreeOpen: (open: boolean) => void;
+  flagsOpen: boolean;
+  setFlagsOpen: (open: boolean) => void;
   inFlightTokens: number;
+  demo: boolean;
+  demoForced: boolean;
+  setDemo: (on: boolean) => void;
+  onboarded: boolean;
+  setOnboarded: (value: boolean) => void;
+  /** True once the guided Explore walkthrough has been seen or dismissed. */
+  walkthroughDone: boolean;
+  setWalkthroughDone: (value: boolean) => void;
+  /** Bumped to re-open the walkthrough on demand (replay), even after it's done. */
+  walkthroughReplayTick: number;
+  replayWalkthrough: () => void;
 }
 
 const ContextualContext = createContext<ContextualAppState | null>(null);
@@ -56,14 +71,33 @@ export function useContextualExplore(): ExploreAnalysisState {
 
 export function ContextualProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = usePersistentState<AppMode>("contextual.mode", "analysis");
+  const { demo, demoForced, setDemo } = useDemoMode();
+  const [onboarded, setOnboarded] = usePersistentState<boolean>("contextual.onboarded", false);
+  const [walkthroughDone, setWalkthroughDone] = usePersistentState<boolean>(
+    "contextual.walkthrough.done",
+    false,
+  );
+  const [walkthroughReplayTick, setWalkthroughReplayTick] = useState(0);
+  const packageOn = useContextualFlag("surface.package");
+  const instantiateOn = useContextualFlag("surface.instantiate");
   const store = useThreadStore();
-  const explore = useSessionAnalysisState();
+  const explore = useSessionAnalysisState(demo);
   const designer = useDesignerState();
   const [thinking, setThinking] = useState(false);
   const [syncTick, setSyncTick] = useState(0);
   const [treeOpen, setTreeOpen] = useState(false);
+  const [flagsOpen, setFlagsOpen] = useState(false);
   const initialModeAppliedRef = useRef(false);
   const lastAnalysisSessionRef = useRef("");
+
+  // A mode is reachable only when its flag is on. Explore is always available.
+  const modeEnabled = useCallback(
+    (candidate: AppMode) =>
+      candidate === "analysis" ||
+      (candidate === "designer" && packageOn) ||
+      (candidate === "session" && instantiateOn),
+    [packageOn, instantiateOn],
+  );
 
   useEffect(() => {
     if (initialModeAppliedRef.current) return;
@@ -71,14 +105,20 @@ export function ContextualProvider({ children }: { children: ReactNode }) {
     if (requested === "analysis" || requested === "designer" || requested === "session") {
       initialModeAppliedRef.current = true;
       const timeout = window.setTimeout(() => {
-        setMode(requested);
+        if (modeEnabled(requested)) setMode(requested);
         const url = new URL(window.location.href);
         url.searchParams.delete("mode");
         window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
       }, 0);
       return () => window.clearTimeout(timeout);
     }
-  }, [setMode]);
+  }, [setMode, modeEnabled]);
+
+  // If the active mode's flag is turned off (or was persisted before the flag
+  // existed), fall back to Explore so we never strand the user on a hidden surface.
+  useEffect(() => {
+    if (!modeEnabled(mode)) setMode("analysis");
+  }, [mode, modeEnabled, setMode]);
 
   useEffect(() => {
     if (mode !== "analysis" || !explore.activeId) return;
@@ -127,6 +167,15 @@ export function ContextualProvider({ children }: { children: ReactNode }) {
     }
   }, [store]);
 
+  // Replaying the tour resets the persisted flag and bumps the tick so the
+  // overlay re-mounts even when the user is already on Explore. It also routes
+  // back to Explore + demo, since the walkthrough only narrates that surface.
+  const replayWalkthrough = useCallback(() => {
+    setWalkthroughDone(false);
+    setMode("analysis");
+    setWalkthroughReplayTick((t) => t + 1);
+  }, [setMode, setWalkthroughDone]);
+
   const createDesignedSession = useCallback((draft = AGENT_ASSISTED_CONTEXT_DRAFT) => {
     store.createDesignedSession(
       buildDesignedSession(draft, {
@@ -151,7 +200,18 @@ export function ContextualProvider({ children }: { children: ReactNode }) {
       createDesignedSession,
       treeOpen,
       setTreeOpen,
+      flagsOpen,
+      setFlagsOpen,
       inFlightTokens,
+      demo,
+      demoForced,
+      setDemo,
+      onboarded,
+      setOnboarded,
+      walkthroughDone,
+      setWalkthroughDone,
+      walkthroughReplayTick,
+      replayWalkthrough,
     }),
     [
       mode,
@@ -165,7 +225,17 @@ export function ContextualProvider({ children }: { children: ReactNode }) {
       branchAndFork,
       createDesignedSession,
       treeOpen,
+      flagsOpen,
       inFlightTokens,
+      demo,
+      demoForced,
+      setDemo,
+      onboarded,
+      setOnboarded,
+      walkthroughDone,
+      setWalkthroughDone,
+      walkthroughReplayTick,
+      replayWalkthrough,
     ],
   );
 

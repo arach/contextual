@@ -5,22 +5,28 @@ import type {
   LoadProfileId,
   SourceState,
   TruthState,
-} from "@/lib/contextCartridge";
+} from "@/lib/contextDesign";
 import { tokFor } from "@/lib/tokens";
 import type { ContextModule, Thread } from "@/types";
 
 export type ContextResourceKind =
   | "recent-session"
+  | "file-memory"
   | "support-doc"
   | "tool-example"
   | "repo-map"
   | "manual-note";
+
+export type ContextSourceAdapterId = "local-file" | "recent-session" | "file-memory";
+export type ContextSourceVisibility = "always" | "on-demand" | "metadata-only";
 
 export interface LocalContextResource {
   id: string;
   title: string;
   kind: ContextResourceKind;
   path: string;
+  sourceAdapter?: ContextSourceAdapterId;
+  visibility?: ContextSourceVisibility;
   tags: string[];
   summary: string;
   usefulFor: string;
@@ -105,6 +111,9 @@ export interface ContextResourceEvidence {
   resourceId: string;
   title: string;
   path: string;
+  adapterId?: ContextSourceAdapterId;
+  sourceRefs?: string[];
+  visibility?: ContextSourceVisibility;
   state: ContextResourceEvidenceState;
   chars: number;
   contentHash?: string;
@@ -141,6 +150,7 @@ const ACTION_OUTPUT_RATIO: Record<AgentResourceAction, number> = {
 
 const RESOURCE_SLOT_BY_KIND: Record<ContextResourceKind, string> = {
   "recent-session": "decision-ledger",
+  "file-memory": "memory-index",
   "support-doc": "source-brief",
   "tool-example": "verification",
   "repo-map": "repo-map",
@@ -149,9 +159,10 @@ const RESOURCE_SLOT_BY_KIND: Record<ContextResourceKind, string> = {
 
 const RESOURCE_TAG_ALIASES: Record<string, string[]> = {
   agent: ["agent", "codex", "claude", "scout"],
-  context: ["context", "cartridge", "planner", "launch", "fork"],
+  context: ["context", "design", "planner", "launch", "fork"],
   session: ["recent-session", "session", "studio"],
   docs: ["support-material", "contract", "north-star"],
+  memory: ["memory", "file-memory", "memfs", "letta", "rules", "knowledge"],
   tools: ["tools", "browser", "codex", "scout"],
 };
 

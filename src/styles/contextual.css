@@ -33,6 +33,18 @@
   --ctx-primary-muted: #2e2e36;
   --ctx-primary-muted-fg: #5c5c68;
 
+  /* Viewer / inset surfaces — components previously hard-coded these charcoals.
+   * Tokenised so the light theme can flip them (see [data-hudson-theme="light"]). */
+  --ctx-viewer-bg: #0d1114;
+  --ctx-viewer-bar: #101518;
+  --ctx-card-inset: #080b0d;
+
+  /* Popover / modal elevation shadow — dark-tuned by default, softened in light. */
+  --ctx-pop-shadow: 0 12px 30px -16px rgba(0, 0, 0, 0.7);
+  --ctx-modal-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.9);
+  --ctx-card-shadow: 0 8px 22px -16px rgba(0, 0, 0, 0.6);
+  --ctx-card-shadow-hover: 0 16px 28px -18px rgba(0, 0, 0, 0.9);
+
   /* Legacy aliases — existing components use --hg-* */
   --hg-bg: var(--ctx-bg);
   --hg-bg-tint: var(--ctx-bg-tint);
@@ -235,6 +247,469 @@ body {
   display: none;
 }
 
+/* ── First-run welcome overlay ── */
+
+@keyframes ctx-welcome-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ctx-welcome-rise {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ctx-welcome-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--ctx-bg) 82%, transparent);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  animation: ctx-welcome-fade 180ms ease-out;
+}
+
+.ctx-welcome-card {
+  width: 100%;
+  max-width: 660px;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: linear-gradient(180deg, var(--ctx-surface) 0%, var(--ctx-bg-tint) 100%);
+  border: 1px solid var(--ctx-hairline);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px -24px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  padding: 30px 32px 24px;
+  animation: ctx-welcome-rise 240ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.ctx-welcome-eyebrow {
+  font-family: var(--hg-mono);
+  font-size: 10px;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--ctx-accent);
+}
+
+.ctx-welcome-title {
+  margin: 12px 0 6px;
+  font-family: var(--hg-sans);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ctx-ink);
+  line-height: 1.25;
+}
+
+.ctx-welcome-lede {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ctx-ink-3);
+  max-width: 52ch;
+}
+
+.ctx-welcome-verbs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 22px 0 8px;
+}
+
+.ctx-welcome-verb {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--ctx-line);
+  background: color-mix(in srgb, var(--ctx-surface) 60%, transparent);
+  color: var(--ctx-ink-2);
+  cursor: pointer;
+  transition: border-color 130ms, background 130ms, transform 130ms;
+}
+.ctx-welcome-verb:hover {
+  border-color: var(--ctx-accent-line);
+  background: var(--ctx-accent-tint);
+  transform: translateX(2px);
+}
+.ctx-welcome-verb:focus-visible {
+  outline: none;
+  border-color: var(--ctx-accent);
+  box-shadow: 0 0 0 2px var(--ctx-accent-tint);
+}
+.ctx-welcome-verb-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--ctx-bg-tint);
+  border: 1px solid var(--ctx-line);
+  color: var(--ctx-accent);
+}
+.ctx-welcome-verb:hover .ctx-welcome-verb-icon {
+  border-color: var(--ctx-accent-line);
+}
+.ctx-welcome-verb-name {
+  font-family: var(--hg-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ctx-ink);
+}
+.ctx-welcome-verb-desc {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ctx-ink-3);
+}
+.ctx-welcome-verb-arrow {
+  color: var(--ctx-dim);
+  transition: color 130ms, transform 130ms;
+}
+.ctx-welcome-verb:hover .ctx-welcome-verb-arrow {
+  color: var(--ctx-accent);
+  transform: translateX(2px);
+}
+
+.ctx-welcome-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--ctx-line);
+}
+.ctx-welcome-footnote {
+  margin: 14px 2px 0;
+  font-family: var(--hg-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: var(--ctx-dim);
+}
+
+/* ── Dynamic loading / scan state ── */
+
+@keyframes ctx-scan-beam {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(520%); }
+}
+@keyframes ctx-scan-bar {
+  0%, 100% { transform: scaleY(0.3); opacity: 0.45; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+@keyframes ctx-scan-dots {
+  0% { content: "\00a0\00a0\00a0"; }
+  25% { content: ".\00a0\00a0"; }
+  50% { content: "..\00a0"; }
+  75%, 100% { content: "..."; }
+}
+
+.ctx-scan {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.ctx-scan-eq {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 20px;
+}
+.ctx-scan-eq i {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--ctx-accent);
+  transform-origin: bottom;
+  animation: ctx-scan-bar 1.05s ease-in-out infinite;
+}
+.ctx-scan-eq i:nth-child(2) { animation-delay: 0.12s; opacity: 0.85; }
+.ctx-scan-eq i:nth-child(3) { animation-delay: 0.24s; }
+.ctx-scan-eq i:nth-child(4) { animation-delay: 0.36s; opacity: 0.85; }
+.ctx-scan-eq i:nth-child(5) { animation-delay: 0.48s; }
+.ctx-scan-label {
+  font-family: var(--hg-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ctx-ink-3);
+}
+.ctx-scan-label::after {
+  content: "...";
+  display: inline-block;
+  width: 1.4ch;
+  text-align: left;
+  color: var(--ctx-accent);
+  animation: ctx-scan-dots 1.4s steps(1, end) infinite;
+}
+.ctx-scan-rail {
+  position: relative;
+  width: 168px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--ctx-line);
+}
+.ctx-scan-beam {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 22%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--ctx-accent), transparent);
+  animation: ctx-scan-beam 1.3s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+/* ── Guided Explore walkthrough (coachmark tour) ── */
+
+@keyframes ctx-tour-card-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes ctx-tour-spot-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px var(--ctx-accent-line), 0 0 0 9999px color-mix(in srgb, var(--ctx-bg) 72%, transparent); }
+  50% { box-shadow: 0 0 0 2px var(--ctx-accent), 0 0 0 9999px color-mix(in srgb, var(--ctx-bg) 72%, transparent); }
+}
+
+.ctx-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 240; /* above WelcomeOverlay (200) and flag panel chrome */
+  pointer-events: none;
+}
+
+/* Full-bleed click target to skip; sits under the spotlight + card. */
+.ctx-tour-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: default;
+  pointer-events: auto;
+}
+
+/* The spotlight cutout: a transparent rect whose huge box-shadow dims the
+   rest of the screen, leaving the anchored region readable and ringed. */
+.ctx-tour-spotlight {
+  position: absolute;
+  border-radius: 8px;
+  pointer-events: none;
+  background: transparent;
+  transition: top 200ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    left 200ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    width 200ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    height 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  animation: ctx-tour-spot-pulse 2.4s ease-in-out infinite;
+}
+
+.ctx-tour-card {
+  position: absolute;
+  pointer-events: auto;
+  background: linear-gradient(180deg, var(--ctx-surface) 0%, var(--ctx-bg-tint) 100%);
+  border: 1px solid var(--ctx-accent-line);
+  border-radius: 10px;
+  box-shadow: 0 20px 52px -22px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  padding: 14px 14px 12px;
+  animation: ctx-tour-card-in 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition: top 180ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    left 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.ctx-tour-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ctx-tour-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--ctx-bg-tint);
+  border: 1px solid var(--ctx-accent-line);
+  color: var(--ctx-accent);
+  flex-shrink: 0;
+}
+.ctx-tour-eyebrow {
+  font-family: var(--hg-mono);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ctx-accent);
+}
+.ctx-tour-close {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ctx-dim);
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms, background 120ms;
+}
+.ctx-tour-close:hover {
+  color: var(--ctx-ink);
+  border-color: var(--ctx-line);
+  background: var(--ctx-bg-tint);
+}
+
+.ctx-tour-title {
+  margin: 11px 0 5px;
+  font-family: var(--hg-sans);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  color: var(--ctx-ink);
+}
+.ctx-tour-body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ctx-ink-3);
+}
+
+.ctx-tour-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ctx-line);
+}
+.ctx-tour-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ctx-tour-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ctx-line);
+  transition: background 150ms, width 150ms;
+}
+.ctx-tour-dot.is-active {
+  width: 14px;
+  border-radius: 3px;
+  background: var(--ctx-accent);
+}
+.ctx-tour-count {
+  font-family: var(--hg-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--ctx-dim);
+}
+.ctx-tour-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.ctx-tour-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--hg-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--ctx-line);
+  background: transparent;
+  color: var(--ctx-ink-3);
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms, background 120ms;
+}
+.ctx-tour-btn.ghost:hover {
+  color: var(--ctx-ink);
+  border-color: var(--ctx-hairline);
+}
+.ctx-tour-btn.primary {
+  border-color: var(--ctx-accent-line);
+  background: var(--ctx-accent);
+  color: var(--ctx-bg);
+}
+.ctx-tour-btn.primary:hover {
+  background: var(--ctx-accent-deep);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ctx-tour-spotlight,
+  .ctx-tour-card { animation: none; }
+}
+
+/* ── Empty states ── */
+
+.ctx-empty {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 40px 28px;
+  text-align: center;
+  background: var(--ctx-bg);
+}
+.ctx-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 14px;
+  border-radius: 11px;
+  background: var(--ctx-bg-tint);
+  border: 1px solid var(--ctx-line);
+  color: var(--ctx-accent);
+}
+.ctx-empty-title {
+  font-family: var(--hg-sans);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ctx-ink);
+}
+.ctx-empty-body {
+  margin: 6px 0 0;
+  max-width: 46ch;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ctx-ink-3);
+}
+.ctx-empty-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+}
+.ctx-empty-hint {
+  margin-top: 16px;
+  font-family: var(--hg-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ctx-dim);
+}
+
 /* ── Studio overrides — softer rules, lower-contrast hovers ── */
 :root,
 html[data-contextual-shell="scout"] {
@@ -242,4 +717,142 @@ html[data-contextual-shell="scout"] {
   --studio-rule-strong: color-mix(in oklab, var(--ctx-ink) 10%, transparent);
   --studio-chip-bg:     color-mix(in oklab, var(--ctx-ink) 3%, transparent);
   --studio-chip-border: color-mix(in oklab, var(--ctx-ink) 6%, transparent);
+}
+
+/* ============================================================================
+ * LIGHT MODE — "less stern": warm paper, soft ink, gentle elevation, a deeper
+ * accent that reads on paper. Opt-in via html[data-hudson-theme="light"] (set
+ * pre-paint by HudsonKit's theme script, persisted to contextual.theme).
+ *
+ * Dark stays the default and is untouched: every value below lives inside the
+ * [data-hudson-theme="light"] guard. Because --hg-* alias --ctx-* upstream,
+ * re-mapping the --ctx-* set cascades to every chrome/component consumer.
+ * ============================================================================ */
+html[data-hudson-theme="light"] {
+  color-scheme: light;
+
+  /* Paper, not white — warm off-white canvas + clean white surfaces that lift. */
+  --ctx-bg: #faf9f6;
+  --ctx-bg-tint: #f3f1ec;
+  --ctx-surface: #ffffff;
+  --ctx-surface-2: #f6f4ef;
+  --ctx-elevated: #efece4;
+
+  /* Soft warm-slate ink — never pure black. */
+  --ctx-ink: #26262b;
+  --ctx-ink-2: #42424a;
+  --ctx-ink-3: #5e5e68;
+  --ctx-muted: #7e7e88;
+  --ctx-dim: #9a9aa2;
+  --ctx-placeholder: #a8a8b0;
+
+  /* Soft, low-contrast warm rules — lean on elevation over hairlines. */
+  --ctx-line: #e6e3db;
+  --ctx-hairline: #d6d2c8;
+
+  /* Deeper, more saturated accent so it reads against paper. */
+  --ctx-accent: #2f6f9e;
+  --ctx-accent-deep: #255a82;
+  --ctx-accent-tint: color-mix(in srgb, var(--ctx-accent) 12%, transparent);
+  --ctx-accent-line: color-mix(in srgb, var(--ctx-accent) 40%, transparent);
+
+  /* Status colors darkened/saturated for a light field. */
+  --ctx-warn: #b5742a;
+  --ctx-warn-tint: color-mix(in srgb, var(--ctx-warn) 14%, transparent);
+  --ctx-ok: #2f8f63;
+  --ctx-ok-tint: color-mix(in srgb, var(--ctx-ok) 14%, transparent);
+
+  /* Primary button — ink on paper inverts (dark fill, paper text). */
+  --ctx-primary: #26262b;
+  --ctx-primary-fg: #faf9f6;
+  --ctx-primary-muted: #e6e3db;
+  --ctx-primary-muted-fg: #9a9aa2;
+
+  /* Viewer / inset surfaces flip to paper tints. */
+  --ctx-viewer-bg: #fbfaf7;
+  --ctx-viewer-bar: #f3f1ec;
+  --ctx-card-inset: #f6f4ef;
+
+  /* Elevation: gentle, warm-slate shadows instead of heavy black halos. */
+  --ctx-pop-shadow: 0 1px 2px rgba(38, 38, 43, 0.06), 0 12px 28px -16px rgba(38, 38, 43, 0.22);
+  --ctx-modal-shadow: 0 2px 6px rgba(38, 38, 43, 0.08), 0 30px 70px -28px rgba(38, 38, 43, 0.3);
+  --ctx-card-shadow: 0 1px 2px rgba(38, 38, 43, 0.05), 0 6px 18px -14px rgba(38, 38, 43, 0.16);
+  --ctx-card-shadow-hover: 0 2px 4px rgba(38, 38, 43, 0.07), 0 14px 26px -16px rgba(38, 38, 43, 0.22);
+
+  /* Tailwind neutral scale — utilities compile to live var() here, so inverting
+   * the scale flips every text-neutral and bg-neutral utility at runtime.
+   * 50 (lightest) ↔ 950 (darkest) swapped to warm light values. */
+  --color-neutral-950: #faf9f6;
+  --color-neutral-900: #f3f1ec;
+  --color-neutral-800: #efece4;
+  --color-neutral-700: #e0ddd4;
+  --color-neutral-600: #b6b3aa;
+  --color-neutral-500: #8b8880;
+  --color-neutral-400: #6e6b64;
+  --color-neutral-300: #4d4a44;
+  --color-neutral-200: #38352f;
+  --color-neutral-100: #2a2823;
+  --color-neutral-50: #1c1a17;
+
+  /* Amber accents used in a couple of warning surfaces. */
+  --color-amber-500: #b5742a;
+  --color-amber-400: #c98a3c;
+}
+
+/* A slightly larger corner radius reads friendlier on paper. The instrument
+ * primitives are sharp (2–4px) by default; loosen them a touch in light mode. */
+html[data-hudson-theme="light"] .hg-btn,
+html[data-hudson-theme="light"] .hg-kbd,
+html[data-hudson-theme="light"] .hg-pill {
+  border-radius: 5px;
+}
+
+/* Selection: soft accent wash rather than a glowing band. */
+html[data-hudson-theme="light"] ::selection {
+  background: var(--ctx-accent-tint);
+  color: var(--ctx-accent-deep);
+}
+
+/* Scrollbar thumb reads as a warm gray on paper. */
+html[data-hudson-theme="light"] ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ctx-ink) 14%, transparent);
+  background-clip: padding-box;
+}
+html[data-hudson-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ctx-ink) 24%, transparent);
+  background-clip: padding-box;
+}
+
+/* Welcome + tour cards: swap the hard black drop-shadow / black ring for the
+ * soft modal shadow + a warm 1px ring. */
+html[data-hudson-theme="light"] .ctx-welcome-card {
+  box-shadow: var(--ctx-modal-shadow), 0 0 0 1px var(--ctx-line);
+  border-radius: 14px;
+}
+html[data-hudson-theme="light"] .ctx-tour-card {
+  box-shadow: var(--ctx-modal-shadow), 0 0 0 1px var(--ctx-line);
+}
+/* Tour primary button: keep accent fill but ensure paper-colored text. */
+html[data-hudson-theme="light"] .ctx-tour-btn.primary {
+  color: #ffffff;
+}
+
+/* The walkthrough spotlight dims the page with a huge box-shadow tinted by
+ * --ctx-bg. On paper that's a soft scrim — re-tune to a translucent slate so
+ * the dimmed area still reads as "behind" without going milky-white. */
+@keyframes ctx-tour-spot-pulse-light {
+  0%, 100% { box-shadow: 0 0 0 1px var(--ctx-accent-line), 0 0 0 9999px rgba(38, 38, 43, 0.28); }
+  50% { box-shadow: 0 0 0 2px var(--ctx-accent), 0 0 0 9999px rgba(38, 38, 43, 0.28); }
+}
+html[data-hudson-theme="light"] .ctx-tour-spotlight {
+  animation-name: ctx-tour-spot-pulse-light;
+}
+html[data-hudson-theme="light"] .ctx-welcome-backdrop {
+  background: color-mix(in srgb, #2a2a30 28%, transparent);
+}
+
+/* Designer category swatches (PackageCard) hard-code muted dark fills with
+ * paper-colored text — invert the text so it stays legible on the swatch. */
+html[data-hudson-theme="light"] .ctx-pkg-swatch {
+  color: #ffffff !important;
 }

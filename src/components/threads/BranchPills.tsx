@@ -4,7 +4,8 @@ interface BranchPillsProps {
   branches: string[];
   activeBranch: string;
   onSelect: (b: string) => void;
-  onBranch: () => void;
+  /** Omitted when the Fork flag is off — the "+ branch" control is hidden. */
+  onBranch?: () => void;
 }
 
 export function BranchPills({ branches, activeBranch, onSelect, onBranch }: BranchPillsProps) {
@@ -29,16 +30,18 @@ export function BranchPills({ branches, activeBranch, onSelect, onBranch }: Bran
           {b}
         </button>
       ))}
-      <button
-        type="button"
-        onClick={(e) => {
-          stop(e);
-          onBranch();
-        }}
-        className="text-[11px] px-1.5 py-0.5 text-neutral-600 hover:text-neutral-400"
-      >
-        + branch
-      </button>
+      {onBranch && (
+        <button
+          type="button"
+          onClick={(e) => {
+            stop(e);
+            onBranch();
+          }}
+          className="text-[11px] px-1.5 py-0.5 text-neutral-600 hover:text-neutral-400"
+        >
+          + branch
+        </button>
+      )}
     </div>
   );
 }

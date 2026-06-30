@@ -12,10 +12,10 @@ interface PackageCardProps {
 export function PackageCard({ module }: PackageCardProps) {
   const palette = chipPalette(module.kind);
   return (
-    <div className="bg-[var(--hg-surface)] border border-[var(--hg-line)] rounded-[2px] p-4 pb-3 relative shadow-[0_8px_22px_-16px_rgba(0,0,0,0.6)] hover:shadow-[0_16px_28px_-18px_rgba(0,0,0,0.9)] transition-shadow">
+    <div className="bg-[var(--hg-surface)] border border-[var(--hg-line)] rounded-[2px] p-4 pb-3 relative shadow-[var(--ctx-card-shadow)] hover:shadow-[var(--ctx-card-shadow-hover)] transition-shadow">
       <div className="flex items-center gap-2 mb-2.5 pb-2 border-b border-dashed border-[var(--hg-hairline)]">
         <span
-          className="hg-mono text-[9.5px] tracking-wider uppercase px-2 py-[3px] rounded-[2px] flex-shrink-0"
+          className="ctx-pkg-swatch hg-mono text-[9.5px] tracking-wider uppercase px-2 py-[3px] rounded-[2px] flex-shrink-0"
           style={palette}
         >
           {module.kind}

@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  Database,
   FileCode2,
   FileText,
   FolderClosed,
@@ -71,6 +72,7 @@ import {
   useHarnessManifest,
   useHarnessSessionKey,
   useHarnessTurns,
+  type HarnessKeyState,
 } from "@/lib/harnessExplore";
 
 const CONTEXT_SIDEBAR_DEFAULT = 260;
@@ -87,6 +89,19 @@ interface ContextViewerProps {
   onBlockDraftChange: (blockId: string, body: string) => void;
   onContextNodeDraftChange: (nodeId: string, body: string) => void;
   onOpenTree?: () => void;
+}
+
+/**
+ * Browser-safe equivalent of the server's stableSessionKey(harness, path):
+ * `${harness}:${base64url(path)}`. Lets demo sessions address the harness At-Rest
+ * reader directly, without the catalog round-trip.
+ */
+function clientSessionKey(harness: string, path: string): string {
+  const b64 = btoa(unescape(encodeURIComponent(path)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return `${harness}:${b64}`;
 }
 
 export function ContextViewer({
@@ -139,9 +154,34 @@ export function ContextViewer({
     "contextual",
   );
 
-  const harnessKey = useHarnessSessionKey(session.path);
+  // Demo sessions aren't in the live harness catalog, but the fixtures ARE real
+  // transcript files on disk. Build the harness key directly so At-Rest reads the raw
+  // native records through the codex/claude adapter — no catalog scan, and it doubles
+  // as a live demo of the harness-neutral model. (Turn-Ready stays hidden for demo: a
+  // faithful "what got sent" reconstruction needs a live harness.)
+  const isDemoSession =
+    session.path.includes("demo-sessions") || session.path.includes("seed-sessions");
+  const realHarnessKey = useHarnessSessionKey(isDemoSession ? undefined : session.path);
+  const demoHarnessKey = useMemo<HarnessKeyState>(
+    () => ({ status: "ready", key: clientSessionKey(session.source, session.path) }),
+    [session.source, session.path],
+  );
+  const harnessKey = isDemoSession ? demoHarnessKey : realHarnessKey;
   const atRest = useHarnessAtRest(mode === "at-rest" ? harnessKey.key : null);
   const turns = useHarnessTurns(mode === "turn-ready" ? harnessKey.key : null);
+  // At-Rest / Turn-Ready read harness-native data. When there's no record to show
+  // (unindexed session or error) render one clean panel instead of an empty tree.
+  const harnessLoading = mode !== "contextual" && harnessKey.status === "loading";
+  const harnessBlocked =
+    mode !== "contextual" &&
+    !harnessLoading &&
+    (harnessKey.status === "idle" ||
+      harnessKey.status === "error" ||
+      (harnessKey.status === "ready" && !harnessKey.key));
+  // Turn-Ready is hidden for demo sessions; if it was the persisted mode, fall back.
+  useEffect(() => {
+    if (isDemoSession && mode === "turn-ready") setMode("contextual");
+  }, [isDemoSession, mode, setMode]);
   const [selectedTurn, setSelectedTurn] = useState<"latest" | string>("latest");
   const manifest = useHarnessManifest(
     mode === "turn-ready" ? harnessKey.key : null,
@@ -345,7 +385,10 @@ export function ContextViewer({
             role="group"
             aria-label="Explore context mode"
           >
-            {(["at-rest", "turn-ready", "contextual"] as const).map((opt) => (
+            {(isDemoSession
+              ? (["at-rest", "contextual"] as const)
+              : (["at-rest", "turn-ready", "contextual"] as const)
+            ).map((opt) => (
               <button
                 key={opt}
                 type="button"
@@ -365,22 +408,24 @@ export function ContextViewer({
         </div>
       </div>
 
-      <ContextBudgetStrip
-        mode={mode}
-        session={session}
-        snapshot={snapshot}
-        manifest={mode === "turn-ready" ? manifest.manifest : null}
-        atRest={
-          mode === "at-rest"
-            ? { loadedLines: atRest.lines.length, totalLines: atRest.totalLines }
-            : null
-        }
-        curatedTokens={
-          mode === "contextual" && curate.enabled ? curate.curatedTokens : null
-        }
-      />
+      {!harnessBlocked && !harnessLoading && (
+        <ContextBudgetStrip
+          mode={mode}
+          session={session}
+          snapshot={snapshot}
+          manifest={mode === "turn-ready" ? manifest.manifest : null}
+          atRest={
+            mode === "at-rest"
+              ? { loadedLines: atRest.lines.length, totalLines: atRest.totalLines }
+              : null
+          }
+          curatedTokens={
+            mode === "contextual" && curate.enabled ? curate.curatedTokens : null
+          }
+        />
+      )}
 
-      {visibleTree && (
+      {visibleTree && !harnessBlocked && !harnessLoading && (
         <ContextBreadcrumbs
           tree={visibleTree}
           selectedNodeId={currentSelectedId}
@@ -389,6 +434,7 @@ export function ContextViewer({
       )}
 
       <div className="flex min-h-0 flex-1">
+        {!harnessBlocked && !harnessLoading && (
         <div className="relative flex shrink-0" style={{ width: sidebarWidth }}>
           <aside
             id={EXPLORE_PANEL_IDS.tree}
@@ -495,6 +541,7 @@ export function ContextViewer({
             </div>
           </div>
         </div>
+        )}
 
         {mode === "contextual" ? (
           <ContextEditorPane
@@ -721,15 +768,15 @@ function ContextEditorPane({
 
   if (!node || !content) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-[#0d1114] text-[13px] text-[var(--hg-muted)]">
+      <div className="flex flex-1 items-center justify-center bg-[var(--ctx-viewer-bg)] text-[13px] text-[var(--hg-muted)]">
         Select a context file in the tree
       </div>
     );
   }
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-[#0d1114]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-2">
+    <div className="flex min-w-0 flex-1 flex-col bg-[var(--ctx-viewer-bg)]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-2">
         <FileCode2 size={14} className="shrink-0 text-[var(--hg-accent)]" />
         <div className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--hg-ink)]">
           {node.path.join(" / ")}
@@ -748,7 +795,7 @@ function ContextEditorPane({
       </div>
 
       {content.meta.length > 0 && (
-        <div className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-1.5 font-mono text-[10px] text-[var(--hg-muted)]">
+        <div className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-1.5 font-mono text-[10px] text-[var(--hg-muted)]">
           {content.meta.map(([key, value]) => (
             <span key={key}>
               {key}: <span className="text-[var(--hg-ink-2)]">{value}</span>
@@ -1085,17 +1132,49 @@ function HarnessFallback({
   keyMissing: boolean;
   error?: string;
 }) {
-  let message: string;
-  if (status === "loading") message = "Resolving session in harness catalog…";
-  else if (status === "error") message = error ?? "Failed to resolve harness session.";
-  else if (keyMissing)
-    message =
-      "This session isn't indexed by the harness catalog. Contextual view still works; harness-native data is unavailable.";
-  else message = error ?? "Harness data unavailable.";
+  if (status === "loading") {
+    return (
+      <div className="flex flex-1 items-center justify-center bg-[var(--ctx-viewer-bg)] px-6">
+        <div className="ctx-scan">
+          <div className="ctx-scan-eq" aria-hidden>
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+          </div>
+          <span className="ctx-scan-label">Resolving session in harness catalog</span>
+          <div className="ctx-scan-rail" aria-hidden>
+            <div className="ctx-scan-beam" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const isError = status === "error";
+  const Icon = isError ? AlertTriangle : Database;
+  const title = isError ? "Couldn't reach the harness" : "Harness data unavailable";
+  const body = isError
+    ? error ?? "Failed to resolve this session in the harness catalog."
+    : keyMissing
+      ? "This session isn't indexed by a live harness, so At-Rest and Turn-Ready have no native records to show. Switch to the Contextual tab — that analysis is computed straight from the transcript and is fully live."
+      : error ?? "Demo sessions are bundled fixtures, not live harness logs, so At-Rest and Turn-Ready have nothing on disk to read. Switch to the Contextual tab — that analysis is fully live.";
 
   return (
-    <div className="flex flex-1 items-center justify-center bg-[#0d1114] px-6 text-center text-[12px] text-[var(--hg-muted)]">
-      <span className="max-w-md leading-relaxed">{message}</span>
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-[var(--ctx-viewer-bg)] px-8 text-center">
+      <span
+        className="mb-1.5 flex h-10 w-10 items-center justify-center rounded-[10px] border"
+        style={{
+          background: "var(--ctx-bg-tint)",
+          borderColor: isError ? "color-mix(in srgb, var(--ctx-warn) 38%, transparent)" : "var(--ctx-line)",
+          color: isError ? "var(--ctx-warn)" : "var(--ctx-accent)",
+        }}
+      >
+        <Icon size={17} />
+      </span>
+      <p className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-[var(--ctx-ink-2)]">{title}</p>
+      <p className="max-w-sm text-[12px] leading-relaxed text-[var(--ctx-ink-3)]">{body}</p>
     </div>
   );
 }
@@ -1131,7 +1210,7 @@ function AtRestEditorPane({
 
   if (status === "loading" && !line && node?.id !== AT_REST_OVERVIEW_NODE_ID) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-[#0d1114] text-[12px] text-[var(--hg-muted)]">
+      <div className="flex flex-1 items-center justify-center bg-[var(--ctx-viewer-bg)] text-[12px] text-[var(--hg-muted)]">
         Loading at-rest lines…
       </div>
     );
@@ -1153,8 +1232,8 @@ function AtRestEditorPane({
       `lines loaded: ${loadedLines} / ${totalLines}`,
     ].join("\n");
     return (
-      <div className="flex min-w-0 flex-1 flex-col bg-[#0d1114]">
-        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-2">
+      <div className="flex min-w-0 flex-1 flex-col bg-[var(--ctx-viewer-bg)]">
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-2">
           <FileCode2 size={14} className="shrink-0 text-[var(--hg-accent)]" />
           <div className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--hg-ink)]">
             at-rest / session.json
@@ -1189,15 +1268,15 @@ function AtRestEditorPane({
   if (line.source.path) meta.push(["source", `${line.source.path}:${line.line}`]);
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-[#0d1114]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-2">
+    <div className="flex min-w-0 flex-1 flex-col bg-[var(--ctx-viewer-bg)]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-2">
         <FileCode2 size={14} className="shrink-0 text-[var(--hg-accent)]" />
         <div className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--hg-ink)]">
           {node?.path.join(" / ") ?? `line ${line.line}`}
         </div>
         <span className="hg-pill">{line.recordType}</span>
       </div>
-      <div className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-1.5 font-mono text-[10px] text-[var(--hg-muted)]">
+      <div className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-1.5 font-mono text-[10px] text-[var(--hg-muted)]">
         {meta.map(([k, v]) => (
           <span key={k}>
             {k}: <span className="text-[var(--hg-ink-2)]">{v}</span>
@@ -1256,7 +1335,7 @@ function TurnReadyEditorPane({
 
   if (status === "loading" && !manifest) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-[#0d1114] text-[12px] text-[var(--hg-muted)]">
+      <div className="flex flex-1 items-center justify-center bg-[var(--ctx-viewer-bg)] text-[12px] text-[var(--hg-muted)]">
         Loading turn-ready manifest…
       </div>
     );
@@ -1273,8 +1352,8 @@ function TurnReadyEditorPane({
   }
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-[#0d1114]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-2">
+    <div className="flex min-w-0 flex-1 flex-col bg-[var(--ctx-viewer-bg)]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-2">
         <FileCode2 size={14} className="shrink-0 text-[var(--hg-accent)]" />
         <div className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--hg-ink)]">
           {node?.path.join(" / ") ?? "turn-ready / manifest.json"}
@@ -1282,7 +1361,7 @@ function TurnReadyEditorPane({
         <AssemblyBadge assembly={manifest.assembly} />
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-1.5 font-mono text-[10px] text-[var(--hg-muted)]">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-1.5 font-mono text-[10px] text-[var(--hg-muted)]">
         <label className="flex items-center gap-1">
           <span className="uppercase tracking-wider">turn:</span>
           <select
@@ -1317,7 +1396,7 @@ function TurnReadyEditorPane({
       </div>
 
       {manifest.warnings.length > 0 && (
-        <div className="flex shrink-0 items-start gap-2 border-b border-[var(--hg-line)] bg-[color:rgb(120_80_20_/_0.18)] px-4 py-2 font-mono text-[10px] text-amber-200">
+        <div className="flex shrink-0 items-start gap-2 border-b border-[var(--hg-line)] bg-[var(--ctx-warn-tint)] px-4 py-2 font-mono text-[10px] text-[var(--ctx-warn)]">
           <AlertTriangle size={12} className="mt-0.5 shrink-0" />
           <ul className="list-none space-y-0.5">
             {manifest.warnings.map((w, i) => (
@@ -1403,7 +1482,7 @@ function ManifestBody({
 
   return (
     <>
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--hg-line)] bg-[#101518] px-4 py-1.5 font-mono text-[10px] text-[var(--hg-muted)]">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-1.5 font-mono text-[10px] text-[var(--hg-muted)]">
         <TruthPill truth={part.truth} />
         {meta.map(([k, v]) => (
           <span key={k}>

@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import { projectHintFromPath, titleFromPath } from "../../lib/sessionLabel";
 import { claudeAdapter } from "./adapters/claude";
 import { codexAdapter } from "./adapters/codex";
+import { grokAdapter } from "./adapters/grok";
 import { piAdapter } from "./adapters/pi";
 import { decodeSessionKey } from "./at-rest";
 import type {
@@ -24,6 +25,7 @@ const adapters: Record<HarnessId, HarnessAdapter> = {
   codex: codexAdapter,
   claude: claudeAdapter,
   pi: piAdapter,
+  grok: grokAdapter,
 };
 
 const sessionCache = new Map<string, HarnessSessionRef>();
@@ -33,7 +35,9 @@ export function harnessAdapterFor(harness: HarnessId): HarnessAdapter {
 }
 
 export function parseHarnessId(value: string | null | undefined): HarnessId | undefined {
-  return value === "codex" || value === "claude" || value === "pi" ? value : undefined;
+  return value === "codex" || value === "claude" || value === "pi" || value === "grok"
+    ? value
+    : undefined;
 }
 
 export async function catalogHarnessSessions(
@@ -59,6 +63,33 @@ export async function catalogHarnessSessions(
 export async function getHarnessSession(sessionKey: string): Promise<HarnessSessionRef> {
   const cached = sessionCache.get(sessionKey);
   if (cached) return harnessAdapterFor(cached.harness).open(cached);
+
+  // Demo + seed fixtures live in the repo and are never in the live catalog. Read
+  // them directly (decode → stat → open) so At-Rest skips the expensive ~/.codex + ~/.claude scan.
+  const demoDecoded = decodeSessionKey(sessionKey);
+  if (
+    demoDecoded &&
+    (demoDecoded.path.includes("demo-sessions") || demoDecoded.path.includes("seed-sessions"))
+  ) {
+    try {
+      const fileStat = await stat(demoDecoded.path);
+      const ref: HarnessSessionRef = {
+        key: sessionKey,
+        harness: demoDecoded.harness,
+        path: demoDecoded.path,
+        project: projectHintFromPath(demoDecoded.path),
+        title: titleFromPath(demoDecoded.path),
+        summary: "Contextual demo session.",
+        observedAt: new Date(fileStat.mtimeMs).toISOString(),
+        mtimeMs: fileStat.mtimeMs,
+        sizeBytes: fileStat.size,
+      };
+      sessionCache.set(ref.key, ref);
+      return harnessAdapterFor(demoDecoded.harness).open(ref);
+    } catch {
+      // fall through to the catalog path
+    }
+  }
 
   const catalog = await catalogHarnessSessions({ limit: 1_500 });
   const session = catalog.sessions.find((candidate) => candidate.key === sessionKey);

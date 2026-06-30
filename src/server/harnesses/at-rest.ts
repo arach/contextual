@@ -27,7 +27,8 @@ export function decodeSessionKey(key: string): { harness: HarnessId; path: strin
   const colon = key.indexOf(":");
   if (colon <= 0) return null;
   const harness = key.slice(0, colon) as HarnessId;
-  if (harness !== "codex" && harness !== "claude" && harness !== "pi") return null;
+  if (harness !== "codex" && harness !== "claude" && harness !== "pi" && harness !== "grok")
+    return null;
   try {
     const path = Buffer.from(key.slice(colon + 1), "base64url").toString("utf8");
     return path.startsWith("/") ? { harness, path } : null;

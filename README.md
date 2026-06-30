@@ -15,6 +15,25 @@ Contextual is not trying to be the live control plane for hidden provider contex
 
 See [docs/INDEX.md](docs/INDEX.md) for the active engineering docs.
 
+## Quickstart
+
+See it running in under a minute — no API keys, no local sessions required:
+
+```bash
+git clone https://github.com/arach/contextual && cd contextual
+bun run setup              # clones the sibling workspace repos (hudson, studio) if missing
+bun install
+CONTEXTUAL_DEMO=1 bun dev  # → http://localhost:5180
+```
+
+First launch opens a short tour. **Demo mode** serves a curated, machine-independent
+corpus, so Explore, Package, Instantiate, and Fork are all populated and clickable
+immediately. When you're ready to use your own work, open the **Demo** chip in the top
+bar → "Use my own sessions" (reads `~/.claude` and `~/.codex`), or just start with `bun
+dev` and pick "Use my own sessions" on the welcome screen.
+
+Env vars are documented in [`.env.example`](.env.example) — all optional; demo mode needs none.
+
 ## Backends
 
 Contextual is vendor-neutral. Two backends ship today:
@@ -26,11 +45,21 @@ Toggle per-thread via the backend chip in the top bar.
 
 ## Setup
 
-Install dependencies (bun is required):
+Contextual is part of a small workspace: it consumes `hudsonkit` (UI chrome) from the
+sibling `hudson` repo and shared primitives from the sibling `studio` repo. `bun run
+setup` checks those out next to this repo (idempotent) so `bun install` can resolve the
+workspace deps:
 
 ```bash
+bun run setup   # clones ../hudson and ../studio if missing, builds hudsonkit
 bun install
 ```
+
+If you already have `../hudson` and `../studio` checked out, `bun run setup` is a no-op
+and you can go straight to `bun install`.
+
+For the fully offline **demo** path you can stop here — `CONTEXTUAL_DEMO=1 bun dev` needs
+no backend. The sections below cover wiring a real backend for live dispatch.
 
 For the **pi-coding-agent** backend, install pi globally:
 
@@ -59,10 +88,13 @@ For the **pi-ai** backend, you have two auth choices:
 For the primary Next AppShell host:
 
 ```bash
-bun dev
+bun dev                     # uses your real ~/.claude + ~/.codex sessions
+CONTEXTUAL_DEMO=1 bun dev    # curated demo corpus, fully offline
 ```
 
-Open `http://localhost:5180`.
+Open `http://localhost:5180`. On first launch you'll get a one-time welcome tour; the
+**Demo** chip in the top bar lets you switch between the demo corpus and your own
+sessions at any time.
 
 The legacy Vite prototype is still available for older live-dispatch paths:
 

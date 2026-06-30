@@ -122,7 +122,7 @@ export function SessionTree({ isOpen, onClose }: SessionTreeProps) {
       onClick={onClose}
     >
       <div
-        className="bg-[var(--hg-bg)] border border-[var(--hg-line)] rounded-[2px] w-full max-w-[860px] max-h-full overflow-hidden flex flex-col shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]"
+        className="bg-[var(--hg-bg)] border border-[var(--hg-line)] rounded-[2px] w-full max-w-[860px] max-h-full overflow-hidden flex flex-col shadow-[var(--ctx-modal-shadow)]"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center gap-3 px-5 py-3 border-b border-[var(--hg-line)] bg-[var(--hg-surface-2)]">

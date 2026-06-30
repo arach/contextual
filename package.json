@@ -9,6 +9,7 @@
     "../hudson/packages/web/hudsonkit"
   ],
   "scripts": {
+    "setup": "node scripts/setup-workspace.mjs",
     "dev": "node scripts/ensure-hudsonkit-styles.mjs && next dev --port 5180",
     "dev:vite": "node scripts/ensure-hudsonkit-styles.mjs && vite",
     "build": "node scripts/ensure-hudsonkit-styles.mjs && next build",

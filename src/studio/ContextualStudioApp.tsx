@@ -6,17 +6,12 @@ import { StudioHudsonApp } from "studio/app-shell";
 import { NextRouterProvider } from "studio/router/next";
 
 import { CONTEXTUAL_THEME_DEFAULTS } from "@/contextualApp/themeConfig";
-import {
-  ContextDesignerPage,
-  ContextTestDrivePage,
-} from "@/studio/ContextDesignerPages";
 import type { CtxDoc } from "@/studio/ctxDocs";
 import {
   BUCKETS,
-  CONTEXT_DESIGNER_HREF,
   HOME_HREF,
+  PACKAGE_VIEW_PROTOTYPE_HREF,
   STATUS_COLORS,
-  CARTRIDGES_HREF,
   buildContextualRegistry,
   statusPalette,
   type ContextualRegistry,
@@ -24,10 +19,9 @@ import {
 import {
   NorthStarPage,
   NotFoundPage,
-  CartridgePage,
   PresentationPage,
-  StudyPage,
 } from "@/studio/StudioPages";
+import { PackageViewPrototype } from "@/studio/prototypes/PackageViewPrototype";
 
 export interface ContextualStudioAppProps {
   ctxDocs?: CtxDoc[];
@@ -45,41 +39,23 @@ function renderStudioPage({
   if (pathname === HOME_HREF) {
     return <NorthStarPage presentations={ctx.presentations} />;
   }
+  if (pathname === PACKAGE_VIEW_PROTOTYPE_HREF) {
+    return <PackageViewPrototype />;
+  }
   const presentation = ctx.presentationForHref(pathname);
   if (presentation) {
     const doc = docsById.get(presentation.id);
     if (!doc) return <NotFoundPage />;
     return <PresentationPage doc={doc} />;
   }
-  const designerRoute = ctx.contextDesignerRouteForHref(pathname);
-  if (designerRoute) {
-    if (designerRoute.kind === "test-drive") {
-      return <ContextTestDrivePage route={designerRoute} />;
-    }
-    return <ContextDesignerPage route={designerRoute} />;
-  }
-  const cartridgeRoute = ctx.cartridgeRouteForHref(pathname);
-  if (cartridgeRoute) return <CartridgePage route={cartridgeRoute} />;
-  const study = ctx.studyForHref(pathname);
-  if (study) return <StudyPage study={study} />;
   return <NotFoundPage />;
 }
 
 const studioCommands = [
   {
-    id: "contextual-studio:north-star",
+    id: "contextual-studio:overview",
     label: "Open Overview",
     action: () => window.location.assign(HOME_HREF),
-  },
-  {
-    id: "contextual-studio:context-designer",
-    label: "Open Context Lab",
-    action: () => window.location.assign(CONTEXT_DESIGNER_HREF),
-  },
-  {
-    id: "contextual-studio:cartridges",
-    label: "Open Cartridges",
-    action: () => window.location.assign(CARTRIDGES_HREF),
   },
   {
     id: "contextual-studio:app",
@@ -103,10 +79,10 @@ export function ContextualStudioApp({
         id: "contextual-studio",
         name: "Contextual Studio",
         description:
-          "Design and test-drive context planning experiments before they graduate into the main app.",
+          "Overview and engineering notes for Contextual's context planning work.",
         icon: createElement(Layers, { size: 14 }),
         agentContext:
-          "Contextual Studio is the design and experimentation surface. The main app owns real session creation; Studio mirrors agent-assisted context drafts, CTX notes, and cartridge studies.",
+          "Contextual Studio surfaces the overview and engineering notes. The main app owns real session creation and the Designer workbench.",
         leftPanel: {
           title: "Studio",
           icon: createElement(Compass, { size: 12 }),

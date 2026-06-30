@@ -1,0 +1,8 @@
+name: contextual
+
+bees:
+  Dev:
+    command: "bun run dev"
+    auto_start: true
+    type: agent
+

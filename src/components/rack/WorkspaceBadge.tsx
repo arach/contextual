@@ -58,7 +58,7 @@ export function WorkspaceBadge({ threadId, syncTick = 0 }: WorkspaceBadgeProps) 
       </button>
       {open && (
         <div
-          className="absolute right-0 top-[calc(100%+6px)] z-50 w-[300px] bg-[var(--hg-surface)] border border-[var(--hg-line)] rounded-[2px] shadow-[0_12px_30px_-16px_rgba(0,0,0,0.7)] p-3"
+          className="absolute right-0 top-[calc(100%+6px)] z-50 w-[300px] bg-[var(--hg-surface)] border border-[var(--hg-line)] rounded-[2px] shadow-[var(--ctx-pop-shadow)] p-3"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="hg-mono text-[9.5px] tracking-wider uppercase text-[var(--hg-muted)] mb-2">

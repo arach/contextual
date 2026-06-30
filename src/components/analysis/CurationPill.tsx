@@ -1,6 +1,6 @@
 "use client";
 
-import type { MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent } from "react";
 
 import {
   CURATION_LABEL,
@@ -11,8 +11,9 @@ import {
 
 /**
  * Small inline pill for cycling a node's curation state (keep → summarize →
- * drop → keep). Stops propagation so clicking the pill doesn't also fire the
- * containing row's onClick.
+ * drop → keep). Rendered as a role="button" span (not a <button>) because it
+ * lives inside the clickable tree-row button — nested <button>s are invalid HTML
+ * and break hydration. Stops propagation so it doesn't also fire the row onClick.
  */
 export function CurationPill({
   state,
@@ -33,21 +34,25 @@ export function CurationPill({
   const padding = size === "xs" ? "px-1 py-0" : "px-1.5 py-[1px]";
   const text = size === "xs" ? "text-[9px]" : "text-[10px]";
 
-  const onClick = (event: MouseEvent<HTMLButtonElement>) => {
+  const fire = (event: MouseEvent | KeyboardEvent) => {
     event.stopPropagation();
     event.preventDefault();
     onCycle();
   };
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={fire}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") fire(event);
+      }}
       title={`curation: ${CURATION_LABEL[state]} (click to cycle)`}
-      className={`inline-flex shrink-0 items-center justify-center rounded-[2px] border ${padding} font-mono ${text} leading-none transition-colors hover:bg-[var(--hg-bg-tint)] ${tone}`}
+      className={`inline-flex shrink-0 cursor-pointer items-center justify-center rounded-[2px] border ${padding} font-mono ${text} leading-none transition-colors hover:bg-[var(--hg-bg-tint)] ${tone}`}
     >
       {CURATION_SYMBOL[state]}
-    </button>
+    </span>
   );
 }
 

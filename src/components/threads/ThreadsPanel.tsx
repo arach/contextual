@@ -31,7 +31,8 @@ export function ThreadsPanelContent({
   activeId: string;
   onSelect: (id: string) => void;
   onSelectBranch: (b: string) => void;
-  onBranch: () => void;
+  /** Omitted when the Fork flag is off — hides the branch affordance. */
+  onBranch?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const railSections = useMemo(
@@ -99,7 +100,7 @@ function buildRailSections(
   activeId: string,
   query: string,
   onSelectBranch: (b: string) => void,
-  onBranch: () => void,
+  onBranch?: () => void,
 ): HudRailSection[] {
   const q = query.trim().toLowerCase();
   const visible = q

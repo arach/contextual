@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { proposeContextDesignResponse } from "@/server/context-design";
 import type { ContextDesignAgentInput } from "@/lib/contextCreation";
-import type { LaunchTargetHarness, LoadProfileId } from "@/lib/contextCartridge";
+import type { LaunchTargetHarness, LoadProfileId } from "@/lib/contextDesign";
 
 export const runtime = "nodejs";
 

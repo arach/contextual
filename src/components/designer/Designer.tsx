@@ -1,4 +1,4 @@
-// Designer mode — a workbench for crafting context cartridges.
+// Designer mode — a workbench for crafting context packages.
 //
 // The view is split across two roots:
 //   - <DesignerChrome /> renders the two SidePanels into the HUD slot.
@@ -9,7 +9,7 @@
 import { useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import { SidePanel } from "hudsonkit/chrome";
-import { Bot, CheckCircle2, FlaskConical, Layers, Rocket, Settings } from "lucide-react";
+import { Bot, CheckCircle2, ChevronRight, FlaskConical, Layers, Rocket, Settings } from "lucide-react";
 
 import {
   AGENT_ASSISTED_CONTEXT_DRAFT,
@@ -76,7 +76,7 @@ export function DesignerChrome({
     <>
       <SidePanel
         side="left"
-        title="CARTRIDGES"
+        title="PACKAGES"
         icon={<Layers size={12} className="text-[var(--hg-accent)]" />}
         width={leftWidth}
         onResizeStart={onResizeLeft}
@@ -92,7 +92,7 @@ export function DesignerChrome({
 
       <SidePanel
         side="right"
-        title="CARTRIDGE · META"
+        title="PACKAGE · META"
         icon={<Settings size={12} className="text-[var(--hg-accent)]" />}
         width={rightWidth}
         onResizeStart={onResizeRight}
@@ -122,6 +122,7 @@ export function DesignerWorkbench({
   const [agentError, setAgentError] = useState<string | null>(null);
   const [isAskingAgent, setIsAskingAgent] = useState(false);
   const [showTestDrive, setShowTestDrive] = useState(true);
+  const [designOpen, setDesignOpen] = useState(false);
   const selectedResources = selectedResourcesForDraft(draft, LOCAL_CONTEXT_RESOURCES);
   const testDriveTokens = profileDraftTokenTotal(draft, draft.testDrive.profileId);
   const loadedEvidence = agentResult?.evidence.filter((item) => item.state === "loaded").length ?? 0;
@@ -186,9 +187,6 @@ export function DesignerWorkbench({
           <span className="ml-auto hg-mono text-[11px] text-right text-[var(--hg-muted)] leading-[1.5] tracking-wider uppercase">
             <b className="text-[var(--hg-ink)] font-medium">{modules.length}</b> cards ·{" "}
             <b className="text-[var(--hg-ink)] font-medium">{fmtTokens(totalTokens)}</b> tok
-            <br />
-            cartridge budget ·{" "}
-            <b className="text-[var(--hg-ink)] font-medium">{pkg.budget}k</b>
           </span>
         </div>
 
@@ -212,81 +210,102 @@ export function DesignerWorkbench({
         </div>
       </div>
 
-      <div className="flex-shrink-0 px-9 py-4 border-b border-[var(--hg-line)] bg-[var(--hg-surface)]">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 hg-mono text-[10px] uppercase tracking-[0.14em] text-[var(--hg-muted)]">
-              <Bot size={12} className="text-[var(--hg-accent)]" />
-              <span>{draft.agent.handle}</span>
-              <span>·</span>
-              <span>{selectedResources.filter((selection) => selection.action !== "drop").length} selected sources</span>
-              <span>·</span>
-              <span>{fmtTokens(testDriveTokens)} test profile</span>
-              <span>·</span>
-              <span>{agentModeLabel}</span>
-            </div>
-            <label className="sr-only" htmlFor="context-objective">
-              Context objective
-            </label>
-            <textarea
-              id="context-objective"
-              value={objective}
-              onChange={(event) => setObjective(event.currentTarget.value)}
-              className="mt-3 min-h-[72px] w-full resize-y border border-[var(--hg-line)] bg-[var(--hg-bg)] px-3 py-2 text-[13px] leading-[1.5] text-[var(--hg-ink)] outline-none focus:border-[var(--hg-accent)]"
-            />
-            <div className="mt-2 text-[13px] leading-[1.55] text-[var(--hg-ink-2)] max-w-[880px]">
-              {draft.agent.summary}
-            </div>
-            {agentResult || agentError ? (
-              <div className="mt-2 flex flex-wrap items-center gap-2 hg-mono text-[10px] uppercase tracking-[0.12em] text-[var(--hg-muted)]">
-                {agentResult ? (
-                  <>
-                    <span>{loadedEvidence} loaded resources</span>
-                    <span>·</span>
-                    <span>{agentResult.warnings.length} warning{agentResult.warnings.length === 1 ? "" : "s"}</span>
-                  </>
-                ) : null}
-                {agentError ? (
-                  <>
-                    <span>·</span>
-                    <span className="text-[var(--status-warn-fg)]">route fallback</span>
-                  </>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={askAgent}
-              disabled={isAskingAgent}
-              className="hg-mono inline-flex h-8 items-center gap-2 border border-[var(--hg-hairline)] px-3 text-[10px] uppercase tracking-[0.12em] text-[var(--hg-ink-2)] hover:border-[var(--hg-accent)] hover:text-[var(--hg-accent)] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Bot size={13} />
-              {isAskingAgent ? "asking" : "ask agent"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowTestDrive((visible) => !visible)}
-              className="hg-mono inline-flex h-8 items-center gap-2 border border-[var(--hg-hairline)] px-3 text-[10px] uppercase tracking-[0.12em] text-[var(--hg-ink-2)] hover:border-[var(--hg-accent)] hover:text-[var(--hg-accent)]"
-            >
-              <FlaskConical size={13} />
-              test drive
-            </button>
-            <button
-              type="button"
-              onClick={() => onCreateSession?.(draft)}
-              className="hg-mono inline-flex h-8 items-center gap-2 border border-[var(--hg-accent)] bg-[var(--hg-accent)]/10 px-3 text-[10px] uppercase tracking-[0.12em] text-[var(--hg-accent)] hover:bg-[var(--hg-accent)]/15 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!onCreateSession}
-            >
-              <Rocket size={13} />
-              create session
-            </button>
-          </div>
-        </div>
-      </div>
+      <div className="flex-shrink-0 border-b border-[var(--hg-line)] bg-[var(--hg-surface)]">
+        <button
+          type="button"
+          onClick={() => setDesignOpen((open) => !open)}
+          aria-expanded={designOpen}
+          className="flex w-full items-center gap-2.5 px-9 py-3 hg-mono text-[10px] uppercase tracking-[0.16em] hover:text-[var(--hg-accent)]"
+        >
+          <ChevronRight
+            size={13}
+            className={
+              "transition-transform " +
+              (designOpen ? "rotate-90 text-[var(--hg-accent)]" : "text-[var(--hg-muted)]")
+            }
+          />
+          <Bot size={12} className="text-[var(--hg-accent)]" />
+          <span className="text-[var(--hg-ink-2)]">design with agent</span>
+          <span className="ml-auto flex items-center gap-2 text-[var(--hg-muted)] normal-case tracking-normal">
+            <span>{draft.agent.handle}</span>
+            <span>·</span>
+            <span>
+              {selectedResources.filter((selection) => selection.action !== "drop").length} sources
+            </span>
+            <span>·</span>
+            <span>{fmtTokens(testDriveTokens)} test profile</span>
+            <span>·</span>
+            <span>{agentModeLabel}</span>
+          </span>
+        </button>
 
-      <div className="flex-shrink-0 border-b border-[var(--hg-line)] bg-[var(--hg-bg)] px-9 py-4">
+        {designOpen ? (
+          <>
+            <div className="border-t border-dashed border-[var(--hg-hairline)] px-9 py-4">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                <div className="min-w-0">
+                  <label className="sr-only" htmlFor="context-objective">
+                    Context objective
+                  </label>
+                  <textarea
+                    id="context-objective"
+                    value={objective}
+                    onChange={(event) => setObjective(event.currentTarget.value)}
+                    className="min-h-[72px] w-full resize-y border border-[var(--hg-line)] bg-[var(--hg-bg)] px-3 py-2 text-[13px] leading-[1.5] text-[var(--hg-ink)] outline-none focus:border-[var(--hg-accent)]"
+                  />
+                  <div className="mt-2 text-[13px] leading-[1.55] text-[var(--hg-ink-2)] max-w-[880px]">
+                    {draft.agent.summary}
+                  </div>
+                  {agentResult || agentError ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 hg-mono text-[10px] uppercase tracking-[0.12em] text-[var(--hg-muted)]">
+                      {agentResult ? (
+                        <>
+                          <span>{loadedEvidence} loaded resources</span>
+                          <span>·</span>
+                          <span>{agentResult.warnings.length} warning{agentResult.warnings.length === 1 ? "" : "s"}</span>
+                        </>
+                      ) : null}
+                      {agentError ? (
+                        <>
+                          <span>·</span>
+                          <span className="text-[var(--status-warn-fg)]">route fallback</span>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={askAgent}
+                    disabled={isAskingAgent}
+                    className="hg-mono inline-flex h-8 items-center gap-2 border border-[var(--hg-hairline)] px-3 text-[10px] uppercase tracking-[0.12em] text-[var(--hg-ink-2)] hover:border-[var(--hg-accent)] hover:text-[var(--hg-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Bot size={13} />
+                    {isAskingAgent ? "asking" : "ask agent"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowTestDrive((visible) => !visible)}
+                    className="hg-mono inline-flex h-8 items-center gap-2 border border-[var(--hg-hairline)] px-3 text-[10px] uppercase tracking-[0.12em] text-[var(--hg-ink-2)] hover:border-[var(--hg-accent)] hover:text-[var(--hg-accent)]"
+                  >
+                    <FlaskConical size={13} />
+                    test drive
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onCreateSession?.(draft)}
+                    className="hg-mono inline-flex h-8 items-center gap-2 border border-[var(--hg-accent)] bg-[var(--hg-accent)]/10 px-3 text-[10px] uppercase tracking-[0.12em] text-[var(--hg-accent)] hover:bg-[var(--hg-accent)]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!onCreateSession}
+                  >
+                    <Rocket size={13} />
+                    create session
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-dashed border-[var(--hg-hairline)] bg-[var(--hg-bg)] px-9 py-4">
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
           <div>
             <div className="hg-mono mb-2 text-[10px] uppercase tracking-[0.16em] text-[var(--hg-muted)]">
@@ -376,6 +395,9 @@ export function DesignerWorkbench({
               ))}
             </div>
           </div>
+        ) : null}
+            </div>
+          </>
         ) : null}
       </div>
 

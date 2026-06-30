@@ -1,4 +1,4 @@
-export type CartridgeLifecycle = "draft" | "review" | "published" | "archived";
+export type DesignLifecycle = "draft" | "review" | "published" | "archived";
 export type TruthState = "logged" | "reconstructed" | "inferred" | "manual";
 export type FreshnessStability = "durable" | "session-local" | "stale-prone";
 export type SourceState = "fresh" | "review" | "stale" | "missing";
@@ -13,7 +13,7 @@ export type PlannerDecisionKind = "accept" | "omit" | "defer" | "edit";
 export type PlanStatus = "ready" | "warnings" | "blocked";
 export type LineageKind = "native-fork" | "replay-fork" | "recipe-derived" | "manual-fork";
 
-export interface CartridgeScope {
+export interface DesignScope {
   kind: "repo" | "directory" | "global";
   path: string;
   branchHint?: string;
@@ -29,7 +29,7 @@ export interface LaunchTarget {
   reason: string;
 }
 
-export interface CartridgeSource {
+export interface DesignSource {
   id: string;
   name: string;
   family: "session" | "doc" | "reconstruction" | "manual" | "code" | "sidecar";
@@ -42,7 +42,7 @@ export interface CartridgeSource {
   exploreHref?: string;
 }
 
-export interface CartridgeProvenance {
+export interface DesignProvenance {
   sourceId: string;
   contentHash: string;
   observedAt: string;
@@ -50,7 +50,7 @@ export interface CartridgeProvenance {
   note: string;
 }
 
-export interface CartridgePart {
+export interface DesignPart {
   id: string;
   order: number;
   kind:
@@ -69,7 +69,7 @@ export interface CartridgePart {
   freshness: FreshnessStability;
   compatibleTargets: LaunchTargetHarness[];
   sourceIds: string[];
-  provenance: CartridgeProvenance[];
+  provenance: DesignProvenance[];
 }
 
 export interface LoadProfile {
@@ -98,7 +98,7 @@ export interface EvalCase {
   truthClaim: string;
 }
 
-export interface CartridgeHistoryEntry {
+export interface DesignHistoryEntry {
   version: string;
   when: string;
   author: string;
@@ -197,7 +197,7 @@ export interface TransferDecision {
   reason: string;
 }
 
-export interface CartridgePlan {
+export interface RunPlan {
   id: string;
   mode: "launch" | "fork";
   status: PlanStatus;
@@ -210,64 +210,64 @@ export interface CartridgePlan {
   transferDecisions?: TransferDecision[];
 }
 
-export interface ContextCartridge {
+export interface ContextDesign {
   id: string;
   name: string;
   version: string;
-  lifecycle: CartridgeLifecycle;
+  lifecycle: DesignLifecycle;
   owner: string;
   intent: string;
   objectives: string[];
-  scope: CartridgeScope;
+  scope: DesignScope;
   targets: LaunchTarget[];
-  sources: CartridgeSource[];
-  parts: CartridgePart[];
+  sources: DesignSource[];
+  parts: DesignPart[];
   profiles: LoadProfile[];
   freshness: FreshnessPolicy;
   evals: EvalCase[];
-  history: CartridgeHistoryEntry[];
+  history: DesignHistoryEntry[];
   planner: PlannerStage[];
   health: HealthSummary;
   plans: {
-    launch: CartridgePlan;
-    fork: CartridgePlan;
+    launch: RunPlan;
+    fork: RunPlan;
   };
 }
 
-export function cartridgeById(
-  cartridges: readonly ContextCartridge[],
+export function designById(
+  designs: readonly ContextDesign[],
   id: string,
-): ContextCartridge | undefined {
-  return cartridges.find((cartridge) => cartridge.id === id);
+): ContextDesign | undefined {
+  return designs.find((design) => design.id === id);
 }
 
 export function partsForProfile(
-  cartridge: ContextCartridge,
+  design: ContextDesign,
   profileId: LoadProfileId,
-): CartridgePart[] {
-  const profile = cartridge.profiles.find((candidate) => candidate.id === profileId);
+): DesignPart[] {
+  const profile = design.profiles.find((candidate) => candidate.id === profileId);
   if (!profile) return [];
   return profile.partIds
-    .map((partId) => cartridge.parts.find((part) => part.id === partId))
-    .filter((part): part is CartridgePart => Boolean(part));
+    .map((partId) => design.parts.find((part) => part.id === partId))
+    .filter((part): part is DesignPart => Boolean(part));
 }
 
 export function profileTokenTotal(
-  cartridge: ContextCartridge,
+  design: ContextDesign,
   profileId: LoadProfileId,
 ): number {
-  return partsForProfile(cartridge, profileId).reduce((total, part) => total + part.tokens, 0);
+  return partsForProfile(design, profileId).reduce((total, part) => total + part.tokens, 0);
 }
 
 export function sourcesForPart(
-  cartridge: ContextCartridge,
-  part: CartridgePart,
-): CartridgeSource[] {
+  design: ContextDesign,
+  part: DesignPart,
+): DesignSource[] {
   return part.sourceIds
-    .map((sourceId) => cartridge.sources.find((source) => source.id === sourceId))
-    .filter((source): source is CartridgeSource => Boolean(source));
+    .map((sourceId) => design.sources.find((source) => source.id === sourceId))
+    .filter((source): source is DesignSource => Boolean(source));
 }
 
-export function planRecord(plan: CartridgePlan): string {
+export function planRecord(plan: RunPlan): string {
   return JSON.stringify(plan, null, 2);
 }

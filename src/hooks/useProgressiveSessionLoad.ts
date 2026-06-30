@@ -26,6 +26,7 @@ export interface ProgressiveSessionLoadState {
 
 export function useProgressiveSessionLoad(
   pinnedPaths: string[],
+  demo: boolean = false,
 ): ProgressiveSessionLoadState {
   const [catalogEntries, setCatalogEntries] = useState<SessionCatalogEntry[]>([]);
   const [sessions, setSessions] = useState<SessionAnalysis[]>([]);
@@ -55,14 +56,14 @@ export function useProgressiveSessionLoad(
       if (!pending.length) return [];
       for (const path of pending) pullQueueRef.current.add(path);
       try {
-        const response = await pullSessionAnalysis({ paths: pending });
+        const response = await pullSessionAnalysis({ paths: pending }, demo);
         mergeSessions(response.sessions);
         return response.sessions;
       } finally {
         for (const path of pending) pullQueueRef.current.delete(path);
       }
     },
-    [mergeSessions],
+    [mergeSessions, demo],
   );
 
   const ingestSessions = useCallback(
@@ -106,9 +107,17 @@ export function useProgressiveSessionLoad(
 
     async function bootstrap() {
       setError(null);
-      setLoadPhase({ stage: "catalog", label: "Scanning agent transcripts…" });
+      // Clear any corpus from a prior mode (e.g. toggling demo ↔ real) for a clean slate.
+      sessionsByPathRef.current.clear();
+      pullQueueRef.current.clear();
+      setSessions([]);
+      setActiveIdState("");
+      setLoadPhase({
+        stage: "catalog",
+        label: demo ? "Loading demo corpus…" : "Scanning agent transcripts…",
+      });
 
-      const catalog = await fetchSessionCatalog({ limit: NAV_LIMIT });
+      const catalog = await fetchSessionCatalog({ limit: NAV_LIMIT, demo });
       if (cancelled) return;
 
       const entries = sortCatalogByObserved(catalog.entries);

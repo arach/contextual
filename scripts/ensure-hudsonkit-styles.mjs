@@ -18,7 +18,11 @@ function ensureHudsonkitLink() {
     spawnSync("rm", ["-rf", linkPath], { stdio: "inherit" });
   }
   if (!existsSync(resolve(hudsonkitPkg, "package.json"))) {
-    console.error("[contextual] Expected hudsonkit at", hudsonkitPkg);
+    console.error(
+      "\n[contextual] hudsonkit not found at " + hudsonkitPkg + "\n" +
+        "  Contextual needs its sibling workspace repos checked out next to it.\n" +
+        "  Run:  bun run setup   (clones ../hudson and ../studio, then builds hudsonkit)\n",
+    );
     process.exit(1);
   }
   spawnSync("ln", ["-s", "../../hudson/packages/web/hudsonkit", linkPath], {

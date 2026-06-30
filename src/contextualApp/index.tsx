@@ -5,6 +5,7 @@ import { createElement } from "react";
 import { Layers, Radio, SlidersHorizontal } from "lucide-react";
 import type { CommandOption, HudsonApp, StatusColor } from "hudsonkit";
 import { ContextualProvider, useContextualApp } from "@/contextualApp/ContextualProvider";
+import { useContextualFlag } from "@/contextualApp/flags";
 import { ContextualNavActions, ContextualNavCenter } from "@/contextualApp/NavCenter";
 import { AppContent } from "@/contextualApp/slots/AppContent";
 import { AppLeftPanel } from "@/contextualApp/slots/AppLeftPanel";
@@ -16,6 +17,10 @@ import { useCommands as useThreadCommands } from "@/state/useCommands";
 
 function useCommands(): CommandOption[] {
   const app = useContextualApp();
+  const packageOn = useContextualFlag("surface.package");
+  const instantiateOn = useContextualFlag("surface.instantiate");
+  const forkOn = useContextualFlag("surface.fork");
+  const treeOn = useContextualFlag("surface.tree");
   // Panel toggles come from Hudson AppShell shellCommands — do not duplicate ids.
   const shellCommands = useThreadCommands(app.store, {
     openDesigner: () => app.setMode("designer"),
@@ -29,6 +34,7 @@ function useCommands(): CommandOption[] {
       { id: "contextual:mode-work", label: "Instantiate", action: () => app.setMode("session") },
       { id: "contextual:mode-explore", label: "Explore", action: () => app.setMode("analysis") },
       { id: "contextual:mode-packages", label: "Package", action: () => app.setMode("designer") },
+      { id: "contextual:feature-flags", label: "Feature Flags", action: () => app.setFlagsOpen(true) },
     ];
 
     if (app.mode === "analysis") {
@@ -68,8 +74,19 @@ function useCommands(): CommandOption[] {
       );
     }
 
-    return [...modeCommands, ...shellCommands];
-  }, [app, shellCommands]);
+    // Hide commands whose surface is flagged off. Runtime-only commands
+    // (run switching, rack pins) ride along with the Instantiate flag.
+    const enabled = (id: string): boolean => {
+      if (id === "contextual:mode-work" || id === "shell:open-session") return instantiateOn;
+      if (id === "contextual:mode-packages" || id === "shell:open-designer") return packageOn;
+      if (id === "shell:open-tree") return treeOn;
+      if (id === "thread:branch") return forkOn;
+      if (id.startsWith("thread:") || id.startsWith("rack:")) return instantiateOn;
+      return true;
+    };
+
+    return [...modeCommands, ...shellCommands].filter((cmd) => enabled(cmd.id));
+  }, [app, shellCommands, packageOn, instantiateOn, forkOn, treeOn]);
 }
 
 function useStatus(): { label: string; color: StatusColor } {

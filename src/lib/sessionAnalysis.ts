@@ -269,10 +269,10 @@ export interface RecipeDraft {
 
 export interface SessionAnalysis {
   id: string;
-  project: "Scout" | "Hudson" | "Talkie" | "Contextual";
+  project: "Eve" | "Pi" | "Excalidraw" | "Scout" | "Hudson" | "Talkie" | "Contextual";
   title: string;
   path: string;
-  source: "codex" | "claude";
+  source: "codex" | "claude" | "pi" | "grok";
   timeLabel: string;
   /** ISO timestamp from transcript file mtime — when you last touched this session. */
   observedAt: string;

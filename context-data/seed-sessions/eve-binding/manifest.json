@@ -1,0 +1,16 @@
+{
+  "scenario": "eve-binding",
+  "posture": "Hunt (accrual-dominated investigation; tiny durable residue)",
+  "caseStudy": "Eve (Excalidraw-style canvas)",
+  "vehicle": "Failing test on arrow/element binding geometry; find + fix.",
+  "sandbox": "/tmp/eve-binding-lab (zero-dep node, git baseline; bug = Math.max should be Math.min in bindingPoint)",
+  "prompt": "Eve's canvas test suite is failing. Run `npm test`, find why bindingPoint returns the wrong attachment point, and fix the bug in geometry.mjs so the suite passes. Keep the function pure and do not modify the test files. When done, briefly explain the root cause.",
+  "capturedAt": "2026-06-30",
+  "harnesses": [
+    { "harness": "codex", "file": "codex.jsonl", "model": "gpt-5.5", "backing": "native (ChatGPT OAuth)", "records": 38, "fixed": true },
+    { "harness": "claude", "file": "claude.jsonl", "model": "claude-opus-4-8", "backing": "native (OAuth)", "records": 28, "fixed": true },
+    { "harness": "pi", "file": "pi.jsonl", "model": "MiniMax-M2.7", "backing": "pi default provider (minimax). NOTE: driven with --provider openai-codex but the transcript reports MiniMax-M2.7 / provider:minimax — the codex provider did NOT take effect. Re-capture if a genuine pi-on-codex lane is wanted.", "records": 18, "fixed": true },
+    { "harness": "grok", "file": "grok.jsonl", "model": "(none — ACP transcript carries no model id)", "backing": "grok agent over ACP, auth'd locally (grok -p --permission-mode bypassPermissions); native ACP updates.jsonl", "records": 38, "fixed": true }
+  ],
+  "note": "Additive namespaced corpus — does not replace context-data/demo-sessions. All four ran the identical prompt against the identical sandbox baseline. Naming: dir = scenario short-name (eve-binding); each source's title/id encodes harness + concrete model. (codex tapped out at capture time; claude planned for the Tight Loop / Survey / Relay shapes.)"
+}

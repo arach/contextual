@@ -2,7 +2,7 @@
 // Next route handlers and the legacy Vite plugin both call this module.
 
 import { mkdir, open, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
   complete,
   getEnvApiKey,
@@ -50,6 +50,12 @@ import {
 
 const HOME = process.env.HOME ?? "/Users/arach";
 const DEFAULT_ENGINE_BUDGET = 1_000_000;
+// Demo mode serves a curated, machine-independent corpus from bundled transcript
+// fixtures so a fresh checkout (or a "tour" toggle in the UI) has something real to
+// explore without reading the local machine. Forced on via CONTEXTUAL_DEMO=1, or
+// requested per-call by the client.
+const DEMO_FORCED = process.env.CONTEXTUAL_DEMO === "1";
+const DEMO_SESSION_DIR = join(process.cwd(), "context-data", "demo-sessions");
 const SESSION_DISCOVERY_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
 const SESSION_DISCOVERY_MAX_FILES = 48;
 const SESSION_CATALOG_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000;
@@ -87,6 +93,10 @@ interface SessionSource {
   timeLabel: string;
   summary: string;
   observedAtMs?: number;
+  /** Grouping key for paired captures of the same vehicle (e.g. "eve-binding"). */
+  scenario?: string;
+  /** Concrete model that produced the transcript (e.g. "gpt-5.5", "MiniMax-M2.7"). */
+  model?: string;
 }
 
 interface ClassifiedChunk {
@@ -264,6 +274,222 @@ const GOOD_CONTEXTS: Record<string, NonNullable<SessionAnalysis["goodContext"]>>
       "Setup-heavy context gets stale fastest and should be refreshed before reuse.",
   },
 };
+
+// ── Demo corpus metadata ──
+// A self-contained, non-proprietary scenario: "Eve", an AI-native collaborative
+// canvas (Next.js + React + TS) with an Excalidraw canvas and a copilot powered by
+// Pi (@earendil-works/pi-ai, a real OSS unified LLM API). Sessions are tagged by area
+// (Eve / Pi / Excalidraw). Transcripts live in context-data/demo-sessions/<id>.jsonl.
+const DEMO_SESSION_SOURCES: SessionSource[] = [
+  {
+    id: "eve-copilot-panel",
+    project: "Eve",
+    title: "AI Copilot Panel",
+    source: "claude",
+    timeLabel: "Jun 24, 2026",
+    path: join(DEMO_SESSION_DIR, "eve-copilot-panel.jsonl"),
+    observedAtMs: Date.parse("2026-06-24T17:10:00Z"),
+    summary:
+      "Wiring @earendil-works/pi-ai streaming + tool calls into Eve's copilot panel — a Next.js route handler, a React stream reader, and a draw-on-canvas tool.",
+  },
+  {
+    id: "pi-provider-review",
+    project: "Pi",
+    title: "pi-ai Provider Review",
+    source: "codex",
+    timeLabel: "Jun 23, 2026",
+    path: join(DEMO_SESSION_DIR, "pi-provider-review.jsonl"),
+    observedAtMs: Date.parse("2026-06-23T15:30:00Z"),
+    summary:
+      "Cold-read review of the pi-ai unified LLM API before adopting it in Eve: model discovery, provider config, streaming events, and cost tracking.",
+  },
+  {
+    id: "pi-toolcall-stream",
+    project: "Pi",
+    title: "Tool-Call Stream Drops Delta",
+    source: "codex",
+    timeLabel: "Jun 22, 2026",
+    path: join(DEMO_SESSION_DIR, "pi-toolcall-stream.jsonl"),
+    observedAtMs: Date.parse("2026-06-22T11:05:00Z"),
+    summary:
+      "Root-cause pass on a dropped final tool-argument delta when an Anthropic stream ends before pi-ai flushes the last partial-JSON chunk.",
+  },
+  {
+    id: "eve-sketch-to-diagram",
+    project: "Eve",
+    title: "Sketch → Diagram (Vision)",
+    source: "codex",
+    timeLabel: "Jun 21, 2026",
+    path: join(DEMO_SESSION_DIR, "eve-sketch-to-diagram.jsonl"),
+    observedAtMs: Date.parse("2026-06-21T19:40:00Z"),
+    summary:
+      "AI feature: export the Excalidraw canvas to PNG, run it through pi-ai image input, and turn the model's structured response back into bound diagram shapes.",
+  },
+  {
+    id: "excalidraw-arrow-binding",
+    project: "Excalidraw",
+    title: "Arrow Binding Jumps",
+    source: "codex",
+    timeLabel: "Jun 20, 2026",
+    path: join(DEMO_SESSION_DIR, "excalidraw-arrow-binding.jsonl"),
+    observedAtMs: Date.parse("2026-06-20T14:15:00Z"),
+    summary:
+      "Debugging Excalidraw arrow bindings that snap to the wrong focus point when a bound shape is dragged quickly across the canvas.",
+  },
+  {
+    id: "excalidraw-export-pipeline",
+    project: "Excalidraw",
+    title: "PNG / SVG Export Pipeline",
+    source: "codex",
+    timeLabel: "Jun 19, 2026",
+    path: join(DEMO_SESSION_DIR, "excalidraw-export-pipeline.jsonl"),
+    observedAtMs: Date.parse("2026-06-19T16:50:00Z"),
+    summary:
+      "Render triage for the canvas export path: fonts missing in SVG, blurry PNG on HiDPI displays, and a clipped bounding box on grouped frames.",
+  },
+  {
+    id: "eve-auth-persistence",
+    project: "Eve",
+    title: "Auth + Canvas Persistence",
+    source: "claude",
+    timeLabel: "Jun 18, 2026",
+    path: join(DEMO_SESSION_DIR, "eve-auth-persistence.jsonl"),
+    observedAtMs: Date.parse("2026-06-18T10:25:00Z"),
+    summary:
+      "Next.js route handlers for auth and autosave: signed cookie sessions, optimistic canvas writes, and conflict handling when a client reconnects.",
+  },
+  {
+    id: "pi-provider-handoff",
+    project: "Pi",
+    title: "Cross-Provider Handoff",
+    source: "claude",
+    timeLabel: "Jun 17, 2026",
+    path: join(DEMO_SESSION_DIR, "pi-provider-handoff.jsonl"),
+    observedAtMs: Date.parse("2026-06-17T13:00:00Z"),
+    summary:
+      "Switching a live Eve session from Anthropic to OpenAI mid-conversation via pi-ai context serialization, preserving tool state and running cost totals.",
+  },
+  {
+    id: "excalidraw-element-inventory",
+    project: "Excalidraw",
+    title: "Element Model Inventory",
+    source: "claude",
+    timeLabel: "Jun 15, 2026",
+    path: join(DEMO_SESSION_DIR, "excalidraw-element-inventory.jsonl"),
+    observedAtMs: Date.parse("2026-06-15T09:20:00Z"),
+    summary:
+      "Read-only inventory of @excalidraw/excalidraw element types, binding fields, and version counters before adding a custom node type to Eve.",
+  },
+];
+
+// ── Seed captures (real harness sessions, namespaced; additive to the synthetic
+// demo corpus above). One scenario — eve-binding ("Hunt" posture: accrual-heavy
+// investigation, tiny durable residue) — driven through codex, claude, pi, and
+// grok with an identical prompt against an identical sandbox. Native formats; the
+// harness + model live in each source's title/metadata (pi ran on MiniMax, not
+// codex — the --provider openai-codex flag didn't take effect on this capture).
+const SEED_SESSION_DIR = join(process.cwd(), "context-data", "seed-sessions", "eve-binding");
+const SEED_SESSION_SOURCES: SessionSource[] = [
+  {
+    id: "eve-binding--codex-gpt-5-5",
+    scenario: "eve-binding",
+    model: "gpt-5.5",
+    project: "Eve",
+    title: "Binding Bug — codex · gpt-5.5",
+    source: "codex",
+    timeLabel: "Jun 30, 2026",
+    path: join(SEED_SESSION_DIR, "codex.jsonl"),
+    observedAtMs: Date.parse("2026-06-30T18:13:30Z"),
+    summary:
+      "codex · gpt-5.5 — finds why bindingPoint returns the wrong attachment point and fixes it (Math.max → Math.min) so Eve's canvas binding tests pass.",
+  },
+  {
+    id: "eve-binding--claude-opus-4-8",
+    scenario: "eve-binding",
+    model: "claude-opus-4-8",
+    project: "Eve",
+    title: "Binding Bug — claude · claude-opus-4-8",
+    source: "claude",
+    timeLabel: "Jun 30, 2026",
+    path: join(SEED_SESSION_DIR, "claude.jsonl"),
+    observedAtMs: Date.parse("2026-06-30T18:15:00Z"),
+    summary:
+      "claude · claude-opus-4-8 — same bindingPoint bug, identical prompt; opus's investigation path to the Math.max → Math.min fix.",
+  },
+  {
+    id: "eve-binding--pi-minimax-m2-7",
+    scenario: "eve-binding",
+    model: "MiniMax-M2.7",
+    project: "Eve",
+    title: "Binding Bug — pi · MiniMax-M2.7",
+    source: "pi",
+    timeLabel: "Jun 30, 2026",
+    path: join(SEED_SESSION_DIR, "pi.jsonl"),
+    observedAtMs: Date.parse("2026-06-30T18:26:00Z"),
+    summary:
+      "pi · MiniMax-M2.7 — same bindingPoint fix through the pi harness, running on MiniMax (the openai-codex provider didn't take effect on this capture).",
+  },
+  {
+    id: "eve-binding--grok",
+    scenario: "eve-binding",
+    project: "Eve",
+    title: "Binding Bug — grok",
+    source: "grok",
+    timeLabel: "Jun 30, 2026",
+    path: join(SEED_SESSION_DIR, "grok.jsonl"),
+    observedAtMs: Date.parse("2026-06-30T18:46:00Z"),
+    summary:
+      "grok — same bindingPoint fix driven through the grok agent over ACP, auth'd locally (the ACP transcript carries no model id).",
+  },
+];
+
+const DEMO_GOOD_CONTEXTS: Record<string, NonNullable<SessionAnalysis["goodContext"]>> = {
+  "pi-toolcall-stream": {
+    rank: 1,
+    label: "root-cause debugging",
+    reason:
+      "A tight pi-ai stream investigation: it reads just enough of the SSE parser and provider adapter to explain the dropped delta before any code changes.",
+    lesson:
+      "Good context is narrow and evidence-backed — anchored in the failing behavior, not a tour of the whole library.",
+    caveat:
+      "It is parser-heavy, so repeated reads of the same file should be compressed into a working-set map.",
+  },
+  "eve-copilot-panel": {
+    rank: 2,
+    label: "feature implementation",
+    reason:
+      "An Eve feature session with the contract, the pi-ai surface, the route handler, and the React reader in one compact window.",
+    lesson:
+      "The useful warm-up is the streaming contract and component boundaries, not the entire app.",
+    caveat:
+      "Environment and verification chunks should stay fresh because the route wiring drifts quickly.",
+  },
+  "eve-sketch-to-diagram": {
+    rank: 3,
+    label: "product & vision exploration",
+    reason:
+      "A rich Eve session pairing product intent, canvas captures, and the vision prompt that turns a sketch into bound shapes.",
+    lesson:
+      "Creative sessions need a decision ledger plus an artifact index so the model keeps taste and asset state straight.",
+    caveat:
+      "Media-heavy context needs thumbnails or descriptions; raw image traces are easy to over-carry.",
+  },
+  "excalidraw-export-pipeline": {
+    rank: 4,
+    label: "render & runtime triage",
+    reason:
+      "An Excalidraw export session that cleanly separates the SVG font issue, the HiDPI raster bug, and the grouped-frame clip.",
+    lesson:
+      "Render context is valuable when it distinguishes what renders correctly, what is wrong, and what is still unverified.",
+    caveat:
+      "Canvas/runtime context gets stale fastest and should be refreshed before reuse.",
+  },
+};
+
+/** Good-context overlay for a session id, across the real and demo corpora. */
+function goodContextFor(id: string): SessionAnalysis["goodContext"] {
+  return DEMO_GOOD_CONTEXTS[id] ?? GOOD_CONTEXTS[id];
+}
 
 function approxTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
@@ -1204,7 +1430,7 @@ function completeAnalysis(
       "Tool output token counts use harness-reported counts when available; other chunks use character-based token estimates scaled to session telemetry.",
       "Threshold packing (pinned policy/task/environment + recent tail) is our simulation of a budget — not a replay of what the client sent on a specific turn.",
     ],
-    goodContext: GOOD_CONTEXTS[source.id],
+    goodContext: goodContextFor(source.id),
   };
 }
 
@@ -1418,6 +1644,214 @@ function parseClaudeJsonl(source: SessionSource, jsonl: string): SessionAnalysis
   return completeAnalysis(source, chunks, maxContext || proxyTokens, 200_000);
 }
 
+// pi native format: one `message` record per turn-part, with role
+// user|assistant|toolResult and content blocks text|thinking|toolCall. Mirrors
+// parseClaudeJsonl, accounting for pi's camelCase fields and its first-class
+// `thinking` blocks (kept as reasoning atoms — a harness-neutral difference).
+function parsePiJsonl(source: SessionSource, jsonl: string): SessionAnalysis {
+  const chunks: ClassifiedChunk[] = [];
+  const calls = new Map<string, string>();
+  let maxContext = 0;
+
+  for (const [lineIndex, line] of jsonl.split("\n").entries()) {
+    if (!line.trim()) continue;
+    let rec: Record<string, any>;
+    try {
+      rec = JSON.parse(line) as Record<string, any>;
+    } catch {
+      continue;
+    }
+    if (rec.type !== "message") continue;
+    const message = rec.message as Record<string, any> | undefined;
+    if (!message) continue;
+    const role = String(message.role ?? "");
+    const meta = {
+      lineNumber: lineIndex + 1,
+      messageIndex: lineIndex,
+      turnIndex: lineIndex,
+    };
+
+    if (role === "assistant") {
+      const usage = message.usage as Record<string, any> | undefined;
+      if (usage) {
+        maxContext = Math.max(
+          maxContext,
+          Number(usage.totalTokens ?? 0) ||
+            Number(usage.input ?? 0) +
+              Number(usage.cacheRead ?? 0) +
+              Number(usage.cacheWrite ?? 0) +
+              Number(usage.output ?? 0),
+        );
+      }
+      const content = Array.isArray(message.content) ? (message.content as Record<string, any>[]) : [];
+      for (const part of content) {
+        if (part.type === "text") {
+          const text = String(part.text ?? "");
+          pushChunk(chunks, classifyAssistantText(text), text, null, false, "assistant text", {
+            sourceType: "message",
+            role: "assistant",
+            ...meta,
+          });
+        } else if (part.type === "thinking") {
+          const text = String(part.thinking ?? "");
+          if (!text.trim()) continue;
+          pushChunk(chunks, classifyAssistantText(text), text, null, false, "assistant reasoning", {
+            sourceType: "reasoning",
+            role: "assistant",
+            ...meta,
+          });
+        } else if (part.type === "toolCall") {
+          const id = String(part.id ?? "");
+          const args = part.arguments as Record<string, any> | undefined;
+          const command = String(args?.command ?? args?.file_path ?? args?.path ?? part.name ?? "");
+          if (id) calls.set(id, command);
+          pushChunk(chunks, "tools", command, null, false, `tool · ${part.name ?? "tool"}`, {
+            sourceType: "tool-call",
+            toolName: String(part.name ?? "tool"),
+            command,
+            ...meta,
+          });
+        }
+      }
+    } else if (role === "user") {
+      const content = message.content;
+      const text =
+        typeof content === "string" ? content : asText(Array.isArray(content) ? content : []);
+      if (!text.trim()) continue;
+      pushChunk(chunks, classifyUserText(text), text, null, undefined, "user message", {
+        sourceType: "message",
+        role: "user",
+        ...meta,
+      });
+    } else if (role === "toolResult") {
+      const output = asText(Array.isArray(message.content) ? (message.content as Record<string, any>[]) : []);
+      const command = calls.get(String(message.toolCallId ?? "")) ?? String(message.toolName ?? "");
+      pushChunk(
+        chunks,
+        classifyToolOutput(output, command),
+        output,
+        null,
+        false,
+        command ? `result · ${command.slice(0, 72)}` : "tool result",
+        { sourceType: "tool-output", command, ...meta },
+      );
+    }
+  }
+
+  const proxyTokens = chunks.reduce((sum, chunk) => sum + chunk.tokens, 0);
+  return completeAnalysis(source, chunks, maxContext || proxyTokens, 200_000);
+}
+
+// grok native format: ACP `session/update` notifications. Text arrives as
+// `*_message_chunk` / `agent_thought_chunk` segments (coalesced here), tool use
+// as `tool_call`, and tool output as `tool_call_update` carrying `rawOutput`.
+function parseGrokAcpJsonl(source: SessionSource, jsonl: string): SessionAnalysis {
+  const chunks: ClassifiedChunk[] = [];
+  const calls = new Map<string, string>();
+
+  // Coalesce consecutive streamed text chunks of the same kind into one atom.
+  let pending: { kind: "user" | "assistant" | "thought"; text: string; line: number } | null = null;
+  const flush = () => {
+    if (!pending || !pending.text.trim()) {
+      pending = null;
+      return;
+    }
+    const { kind, text, line } = pending;
+    const meta = { lineNumber: line + 1, messageIndex: line, turnIndex: line };
+    if (kind === "user") {
+      pushChunk(chunks, classifyUserText(text), text, null, undefined, "user message", {
+        sourceType: "message",
+        role: "user",
+        ...meta,
+      });
+    } else if (kind === "thought") {
+      pushChunk(chunks, classifyAssistantText(text), text, null, false, "assistant reasoning", {
+        sourceType: "reasoning",
+        role: "assistant",
+        ...meta,
+      });
+    } else {
+      pushChunk(chunks, classifyAssistantText(text), text, null, false, "assistant text", {
+        sourceType: "message",
+        role: "assistant",
+        ...meta,
+      });
+    }
+    pending = null;
+  };
+  const accumulate = (kind: "user" | "assistant" | "thought", text: string, line: number) => {
+    if (pending && pending.kind !== kind) flush();
+    if (!pending) pending = { kind, text: "", line };
+    pending.text += text;
+  };
+  const updateContentText = (content: unknown): string =>
+    Array.isArray(content)
+      ? content
+          .map((b: Record<string, any>) => String(b?.content?.text ?? b?.text ?? ""))
+          .join("")
+      : "";
+
+  for (const [lineIndex, line] of jsonl.split("\n").entries()) {
+    if (!line.trim()) continue;
+    let rec: Record<string, any>;
+    try {
+      rec = JSON.parse(line) as Record<string, any>;
+    } catch {
+      continue;
+    }
+    const update = rec?.params?.update as Record<string, any> | undefined;
+    if (!update) continue;
+    const kind = String(update.sessionUpdate ?? "");
+
+    if (kind === "user_message_chunk") {
+      accumulate("user", String(update.content?.text ?? ""), lineIndex);
+    } else if (kind === "agent_message_chunk") {
+      accumulate("assistant", String(update.content?.text ?? ""), lineIndex);
+    } else if (kind === "agent_thought_chunk") {
+      accumulate("thought", String(update.content?.text ?? ""), lineIndex);
+    } else if (kind === "tool_call") {
+      flush();
+      const id = String(update.toolCallId ?? "");
+      const raw = (update.rawInput ?? {}) as Record<string, any>;
+      const command = String(raw.command ?? raw.path ?? raw.file_path ?? update.title ?? "");
+      if (id) calls.set(id, command);
+      pushChunk(chunks, "tools", command, null, false, `tool · ${update.title ?? "tool"}`, {
+        sourceType: "tool-call",
+        toolName: String(update.title ?? "tool"),
+        command,
+        lineNumber: lineIndex + 1,
+        messageIndex: lineIndex,
+        turnIndex: lineIndex,
+      });
+    } else if (kind === "tool_call_update") {
+      const raw = update.rawOutput as Record<string, any> | undefined;
+      const output = String(raw?.output_for_prompt ?? updateContentText(update.content) ?? "");
+      if (!output.trim()) continue; // skip progress-only updates with no output
+      flush();
+      const command = calls.get(String(update.toolCallId ?? "")) ?? String(raw?.command ?? update.title ?? "");
+      pushChunk(
+        chunks,
+        classifyToolOutput(output, command),
+        output,
+        null,
+        false,
+        command ? `result · ${command.slice(0, 72)}` : "tool result",
+        {
+          sourceType: "tool-output",
+          command,
+          lineNumber: lineIndex + 1,
+          messageIndex: lineIndex,
+          turnIndex: lineIndex,
+        },
+      );
+    }
+  }
+  flush();
+
+  const proxyTokens = chunks.reduce((sum, chunk) => sum + chunk.tokens, 0);
+  return completeAnalysis(source, chunks, proxyTokens, 200_000);
+}
+
 async function sessionObservedAtMs(source: SessionSource): Promise<number> {
   if (source.observedAtMs) return source.observedAtMs;
   try {
@@ -1437,7 +1871,11 @@ async function analyzeSessionSource(source: SessionSource): Promise<SessionAnaly
     analysis =
       enriched.source === "codex"
         ? parseCodexJsonl(enriched, jsonl)
-        : parseClaudeJsonl(enriched, jsonl);
+        : enriched.source === "pi"
+          ? parsePiJsonl(enriched, jsonl)
+          : enriched.source === "grok"
+            ? parseGrokAcpJsonl(enriched, jsonl)
+            : parseClaudeJsonl(enriched, jsonl);
   } catch {
     analysis = completeAnalysis(
       enriched,
@@ -1462,7 +1900,11 @@ function inferSourceFromPath(path: string): SessionAnalysis["source"] {
 }
 
 function sessionIdFromPath(path: string): string {
-  return path.match(UUID_RE)?.[0] ?? hashText(path);
+  const sessionId = path.match(UUID_RE)?.[0];
+  if (sessionId && path.includes("/subagents/")) {
+    return `${sessionId}-${basename(path, ".jsonl")}`;
+  }
+  return sessionId ?? hashText(path);
 }
 
 function formatObservedLabel(ms: number): string {
@@ -1796,7 +2238,9 @@ function withBucketRecurrence(sessions: SessionAnalysis[]): SessionAnalysis[] {
       };
     }),
   })).map((session) => {
-    const source = SESSION_SOURCES.find((candidate) => candidate.id === session.id);
+    const source = [...SESSION_SOURCES, ...DEMO_SESSION_SOURCES, ...SEED_SESSION_SOURCES].find(
+      (candidate) => candidate.id === session.id,
+    );
     if (!source) return session;
     const blocks = buildContextBlocks(source, session.bucketInsights, session.slices, session.atoms);
     return {
@@ -1868,7 +2312,7 @@ function catalogEntryFromAnalysis(session: SessionAnalysis, inCorpus: boolean): 
 
 function diskRecordToSource(record: DiskCatalogRecord): SessionSource {
   return {
-    id: record.id,
+    id: sessionIdFromPath(record.path),
     project: record.project,
     title: record.title,
     path: record.path,
@@ -2109,10 +2553,66 @@ async function answerWithModel(prompt: string): Promise<{ answer: string; model:
   }
 }
 
+// ── Demo corpus (machine-independent, served from bundled fixtures) ──
+
+/**
+ * The curated, machine-independent demo corpus: the synthetic Eve / Pi /
+ * Excalidraw fixtures plus the namespaced real harness captures (seed sessions).
+ */
+function demoSessionSources(): SessionSource[] {
+  return [...DEMO_SESSION_SOURCES, ...SEED_SESSION_SOURCES];
+}
+
+// Demo sessions share ids with the real SESSION_SOURCES (so GOOD_CONTEXTS still
+// applies), so they need their own registry to avoid colliding with a real corpus
+// that may already be loaded in the same process.
+const demoRegistry = new Map<string, SessionAnalysis>();
+
+function registerDemo(sessions: SessionAnalysis[]): SessionAnalysis[] {
+  for (const session of sessions) demoRegistry.set(session.id, session);
+  return sessions;
+}
+
+async function demoCatalogIndex(): Promise<SessionCatalogEntry[]> {
+  const corpusPaths = new Set([...demoRegistry.values()].map((session) => session.path));
+  return demoSessionSources()
+    .map((source) => catalogEntryFromSource(source, corpusPaths.has(source.path)))
+    .sort((a, b) => Date.parse(b.observedAt) - Date.parse(a.observedAt));
+}
+
+async function loadDemoSessionAnalyses(): Promise<SessionAnalysis[]> {
+  return registerDemo(
+    withFamiliarity(
+      withBucketRecurrence(await Promise.all(demoSessionSources().map(analyzeSessionSource))),
+    ),
+  );
+}
+
+async function pullDemoSessionAnalyses(paths: string[]): Promise<SessionAnalysis[]> {
+  const wanted = new Set(paths.filter(Boolean));
+  const sources = demoSessionSources().filter((source) => wanted.has(source.path));
+  if (!sources.length) return [];
+  const fresh = await Promise.all(sources.map(analyzeSessionSource));
+  // Recompute corpus-aware signals (familiarity, recurrence) across all known demo sessions.
+  const union = new Map(demoRegistry);
+  for (const session of fresh) union.set(session.id, session);
+  const enriched = registerDemo(withFamiliarity(withBucketRecurrence([...union.values()])));
+  return paths
+    .map((path) => enriched.find((session) => session.path === path))
+    .filter((session): session is SessionAnalysis => Boolean(session));
+}
+
+/** Runtime config surfaced to the client (e.g. whether demo mode is forced via env). */
+export function getContextualRuntimeConfig(): { demoForced: boolean } {
+  return { demoForced: DEMO_FORCED };
+}
+
 // ── Framework-neutral session API ──
 
-export async function getSessionAnalysisResponse(): Promise<SessionAnalysisResponse> {
-  const sessions = await loadSessionAnalyses();
+export async function getSessionAnalysisResponse(
+  demo: boolean = DEMO_FORCED,
+): Promise<SessionAnalysisResponse> {
+  const sessions = demo || DEMO_FORCED ? await loadDemoSessionAnalyses() : await loadSessionAnalyses();
   return {
     generatedAt: new Date().toISOString(),
     thresholds: ANALYSIS_THRESHOLDS,
@@ -2124,11 +2624,12 @@ export async function getSessionCatalogResponse(params?: {
   q?: string;
   project?: string;
   limit?: number;
+  demo?: boolean;
 }): Promise<SessionCatalogResponse> {
   const q = params?.q ?? "";
   const project = params?.project;
   const limit = Math.min(80, Math.max(1, params?.limit ?? 40));
-  const entries = await getSessionCatalogIndex();
+  const entries = params?.demo || DEMO_FORCED ? await demoCatalogIndex() : await getSessionCatalogIndex();
   const filtered = filterCatalog(entries, q, project, limit);
   return {
     generatedAt: new Date().toISOString(),
@@ -2137,11 +2638,21 @@ export async function getSessionCatalogResponse(params?: {
   };
 }
 
-export async function getSessionBootstrapResponse(): Promise<SessionBootstrapResponse> {
-  const entries = filterCatalog(await getSessionCatalogIndex(), "", undefined, 28);
+export async function getSessionBootstrapResponse(
+  demo: boolean = DEMO_FORCED,
+): Promise<SessionBootstrapResponse> {
+  const useDemo = demo || DEMO_FORCED;
+  const entries = filterCatalog(
+    useDemo ? await demoCatalogIndex() : await getSessionCatalogIndex(),
+    "",
+    undefined,
+    28,
+  );
   const activeEntry = entries[0] ?? null;
   const activeSession = activeEntry
-    ? (await pullSessionAnalyses([activeEntry.path]))[0] ?? null
+    ? (useDemo
+        ? await pullDemoSessionAnalyses([activeEntry.path])
+        : await pullSessionAnalyses([activeEntry.path]))[0] ?? null
     : null;
 
   return {
@@ -2154,6 +2665,7 @@ export async function getSessionBootstrapResponse(): Promise<SessionBootstrapRes
 
 export async function pullSessionAnalysisResponse(
   request: SessionPullRequest,
+  demo: boolean = DEMO_FORCED,
 ): Promise<SessionPullResponse> {
   const paths = [
     ...(request.path ? [request.path] : []),
@@ -2162,23 +2674,28 @@ export async function pullSessionAnalysisResponse(
   if (!paths.length) {
     throw new Error("path or paths required");
   }
-  const sessions = await pullSessionAnalyses(paths);
+  const sessions =
+    demo || DEMO_FORCED ? await pullDemoSessionAnalyses(paths) : await pullSessionAnalyses(paths);
   return { sessions };
 }
 
 export async function getSessionAnalysisAskResponse(
   body: SessionAnalysisAskRequest,
+  demo: boolean = DEMO_FORCED,
 ): Promise<SessionAnalysisAskResponse> {
   if (!body.sessionId || !body.question?.trim()) {
     throw new Error("sessionId and question required");
   }
-  let session = sessionRegistry.get(body.sessionId);
+  const useDemo = demo || DEMO_FORCED;
+  let session = useDemo ? demoRegistry.get(body.sessionId) : sessionRegistry.get(body.sessionId);
   if (!session) {
-    const catalog = await getSessionCatalogIndex();
+    const catalog = useDemo ? await demoCatalogIndex() : await getSessionCatalogIndex();
     const entry = catalog.find((candidate) => candidate.id === body.sessionId);
     if (entry) {
-      const pulled = await pullSessionAnalyses([entry.path]);
-      session = pulled[0] ?? sessionRegistry.get(body.sessionId);
+      const pulled = useDemo
+        ? await pullDemoSessionAnalyses([entry.path])
+        : await pullSessionAnalyses([entry.path]);
+      session = pulled[0] ?? (useDemo ? demoRegistry.get(body.sessionId) : sessionRegistry.get(body.sessionId));
     }
   }
   if (!session) throw new Error(`unknown session: ${body.sessionId}`);

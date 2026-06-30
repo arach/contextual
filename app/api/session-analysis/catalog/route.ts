@@ -10,6 +10,7 @@ export async function GET(request: Request) {
       q: url.searchParams.get("q") ?? "",
       project: url.searchParams.get("project") ?? undefined,
       limit: Number(url.searchParams.get("limit") ?? 40),
+      demo: url.searchParams.get("demo") === "1",
     });
     return NextResponse.json(body);
   } catch (error) {

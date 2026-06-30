@@ -10,7 +10,7 @@
 
 export const HARNESS_CONTRACT_VERSION = "0.1.0";
 
-export type HarnessId = "codex" | "claude" | "pi";
+export type HarnessId = "codex" | "claude" | "pi" | "grok";
 
 export type ManifestTruth = "logged" | "reconstructed" | "inferred" | "unavailable";
 

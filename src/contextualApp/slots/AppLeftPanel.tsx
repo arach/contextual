@@ -5,9 +5,11 @@ import { PackageList } from "@/components/designer/PackageList";
 import { ThreadsPanelContent } from "@/components/threads/ThreadsPanel";
 import { PACKAGES } from "@/data/packages";
 import { useContextualApp } from "@/contextualApp/ContextualProvider";
+import { useContextualFlag } from "@/contextualApp/flags";
 
 export function AppLeftPanel() {
   const { mode, explore, designer, store, branchAndFork } = useContextualApp();
+  const forkOn = useContextualFlag("surface.fork");
 
   if (mode === "session") {
     return (
@@ -16,7 +18,7 @@ export function AppLeftPanel() {
         activeId={store.activeId}
         onSelect={store.select}
         onSelectBranch={store.setActiveBranch}
-        onBranch={branchAndFork}
+        onBranch={forkOn ? branchAndFork : undefined}
       />
     );
   }
