@@ -63,6 +63,7 @@ export function AppContent() {
             demoForced={demoForced}
             onStartDemo={() => setDemo(true)}
             onRescan={() => window.location.reload()}
+            onImportPath={explore.importByPath}
           />
         ) : (
           <SessionAnalysisWorkbench

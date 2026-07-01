@@ -70,6 +70,7 @@ interface AnalysisState {
   setActiveId: (id: string) => void;
   pinnedPaths: string[];
   pinByPath: (path: string) => Promise<void>;
+  importByPath: (path: string) => Promise<string | null>;
   unpinByPath: (path: string) => void;
   threshold: number;
   setThreshold: (threshold: number) => void;
@@ -127,6 +128,36 @@ export function useSessionAnalysisState(demo: boolean = false): AnalysisState {
       progressive.ingestSessions(response.sessions);
     },
     [pinnedPaths, sessions, progressive],
+  );
+
+  // Import your own session (BYOS): pull + analyze an arbitrary on-disk
+  // transcript by absolute path, ingest it, pin it (so it survives reloads),
+  // and select it. Resolves to an error string on failure, or null on success.
+  const importByPath = useCallback(
+    async (rawPath: string): Promise<string | null> => {
+      const path = rawPath.trim();
+      if (!path) return "Enter a transcript path.";
+      const existing = sessions.find((session) => session.path === path);
+      if (existing) {
+        progressive.setActiveId(existing.id);
+        return null;
+      }
+      let response;
+      try {
+        response = await pullSessionAnalysis({ path }, demo);
+      } catch (e) {
+        return e instanceof Error ? e.message : String(e);
+      }
+      const first = response.sessions[0];
+      if (!first) return "No readable agent transcript at that path.";
+      progressive.ingestSessions(response.sessions);
+      const nextPinned = pinPath(pinnedPaths, path);
+      setPinnedPaths(nextPinned);
+      writePinnedPaths(nextPinned);
+      progressive.setActiveId(first.id);
+      return null;
+    },
+    [sessions, progressive, demo, pinnedPaths],
   );
 
   const unpinByPath = useCallback((path: string) => {
@@ -215,6 +246,7 @@ export function useSessionAnalysisState(demo: boolean = false): AnalysisState {
     setActiveId: progressive.setActiveId,
     pinnedPaths,
     pinByPath,
+    importByPath,
     unpinByPath,
     threshold,
     setThreshold,

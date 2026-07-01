@@ -11,6 +11,8 @@ import {
   BUCKETS,
   HOME_HREF,
   PACKAGE_VIEW_PROTOTYPE_HREF,
+  REPLAY_PROTOTYPE_HREF,
+  SESSION_OBSERVE_PROTOTYPE_HREF,
   STATUS_COLORS,
   buildContextualRegistry,
   statusPalette,
@@ -22,6 +24,8 @@ import {
   PresentationPage,
 } from "@/studio/StudioPages";
 import { PackageViewPrototype } from "@/studio/prototypes/PackageViewPrototype";
+import { ReplayPrototype } from "@/studio/prototypes/ReplayPrototype";
+import { SessionObservePrototype } from "@/studio/prototypes/SessionObservePrototype";
 
 export interface ContextualStudioAppProps {
   ctxDocs?: CtxDoc[];
@@ -41,6 +45,12 @@ function renderStudioPage({
   }
   if (pathname === PACKAGE_VIEW_PROTOTYPE_HREF) {
     return <PackageViewPrototype />;
+  }
+  if (pathname === REPLAY_PROTOTYPE_HREF) {
+    return <ReplayPrototype />;
+  }
+  if (pathname === SESSION_OBSERVE_PROTOTYPE_HREF) {
+    return <SessionObservePrototype />;
   }
   const presentation = ctx.presentationForHref(pathname);
   if (presentation) {

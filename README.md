@@ -1,115 +1,159 @@
 # Contextual
 
-Upstream context tooling for agentic engineering. Contextual inspects prior sessions, packages durable context, instantiates new runs in target harnesses, and forks from known provenance.
+Contextual is a context planning workbench for agentic engineering. It reads prior agent
+sessions, turns them into inspectable context atoms, helps package durable context, and
+prepares honest launch or fork plans for future runs.
 
-Contextual is not trying to be the live control plane for hidden provider context. Model providers and harnesses increasingly own server-side caching, compression, memory, and session reconstruction. Contextual focuses on the durable boundaries before a run starts and when a run is deliberately forked, cloned, packaged, or replayed.
+It is deliberately upstream of the model provider's hidden context window. Providers and
+harnesses own their own caching, compression, memory, and reconstruction. Contextual owns
+the durable boundary: what was observed, what was selected, what was packaged, and what a
+new run is allowed to claim as lineage.
 
-## Product model
+## What You Can Do
 
-| Verb | Primary surface | Product job |
+| Surface | Job | Status |
 | --- | --- | --- |
-| **Explore** | Developer-first Studio | Inspect native sessions, turn-ready manifests, atoms, buckets, and stale context |
-| **Package** | Developer-first Studio | Distill reusable context into versioned artifacts with provenance and freshness rules |
-| **Instantiate** | Agent-first Runtime | Compile packages and recipes into a launch plan for a target harness/model/workspace |
-| **Fork** | Agent-first Runtime | Derive a new run from a prior manifest or run with explicit lineage and transfer decisions |
+| Explore | Inspect native transcripts, turn-ready manifests, Contextual atoms, buckets, and stale context | primary app surface |
+| Package | Distill reusable context into versioned artifacts with provenance and freshness rules | prototype-backed |
+| Instantiate | Compile packages and recipes into a target-specific launch plan | in progress |
+| Fork | Derive a new run from explicit prior state without pretending hidden state continued | in progress |
+| Studio | Browse the engineering docs and interactive design prototypes behind those surfaces | active design lab |
 
-See [docs/INDEX.md](docs/INDEX.md) for the active engineering docs.
+The shortest version: Contextual answers "what should the next agent start with, and why
+is that claim true?"
 
 ## Quickstart
 
-See it running in under a minute — no API keys, no local sessions required:
+You can run the full app with a bundled demo corpus and no API keys:
 
 ```bash
-git clone https://github.com/arach/contextual && cd contextual
-bun run setup              # clones the sibling workspace repos (hudson, studio) if missing
+git clone https://github.com/arach/contextual
+cd contextual
+bun run setup
 bun install
-CONTEXTUAL_DEMO=1 bun dev  # → http://localhost:5180
+CONTEXTUAL_DEMO=1 bun dev
 ```
 
-First launch opens a short tour. **Demo mode** serves a curated, machine-independent
-corpus, so Explore, Package, Instantiate, and Fork are all populated and clickable
-immediately. When you're ready to use your own work, open the **Demo** chip in the top
-bar → "Use my own sessions" (reads `~/.claude` and `~/.codex`), or just start with `bun
-dev` and pick "Use my own sessions" on the welcome screen.
+Open `http://localhost:5180`.
 
-Env vars are documented in [`.env.example`](.env.example) — all optional; demo mode needs none.
+Demo mode is self-contained. It includes real captured sessions for comparison work, so
+Explore, Package, Instantiate, Fork, and the guided walkthrough have useful data on first
+load.
+
+## Use Your Own Sessions
+
+For local sessions, run:
+
+```bash
+bun dev
+```
+
+Contextual scans agent transcripts from `~/.claude` and `~/.codex`. If the catalog is
+empty or you want one specific file, paste an absolute transcript path into the empty
+Explore state and import it directly.
+
+Useful session-analysis routes:
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/session-analysis` | analyzed sessions |
+| `GET /api/session-analysis?demo=1` | bundled demo corpus |
+| `GET /api/session-analysis/catalog` | discovered local transcripts |
+| `POST /api/session-analysis/pull` | analyze a specific transcript path |
+
+## Studio
+
+The Studio route is the project's design and architecture workspace:
+
+```text
+/studio
+/studio/package-view
+/studio/session-observe
+/studio/replay
+```
+
+Highlights:
+
+- `/studio` renders the CTX presentations and active engineering notes.
+- `/studio/package-view` explores an IDE-like context package surface.
+- `/studio/session-observe` shows one session as a turn-by-turn accumulation instrument.
+- `/studio/replay` compares multiple harness lanes for the same scenario in lockstep.
+
+Studio prototypes fetch real demo analysis from `/api/session-analysis?demo=1`; they are
+views over existing data, not separate capture systems.
+
+## Local Workspace
+
+Contextual expects two sibling repositories:
+
+- `../hudson`, for `hudsonkit` AppShell chrome and styling.
+- `../studio`, for the shared Studio shell and document primitives.
+
+`bun run setup` is idempotent. It clones or prepares those sibling workspaces when they
+are missing, then ensures `hudsonkit` styles are available.
+
+Common commands:
+
+```bash
+bun run setup        # prepare sibling workspace dependencies
+bun install          # install packages
+bun dev              # Next AppShell host on http://localhost:5180
+CONTEXTUAL_DEMO=1 bun dev
+bun run dev:vite     # legacy Vite prototype host
+bun run typecheck
+bun run build
+```
+
+Environment variables are documented in [`.env.example`](.env.example). Demo mode does
+not require any of them.
 
 ## Backends
 
-Contextual is vendor-neutral. Two backends ship today:
+Contextual is vendor-neutral. Two live-dispatch backends exist today:
 
-- **pi-coding-agent** — spawns the `pi` CLI (`@earendil-works/pi-coding-agent`) per dispatch. Native session tree, fork, and on-disk workspace materialization. Pick this when you want pi's rich session ergonomics.
-- **pi-ai** — in-process via `@earendil-works/pi-ai`. Stateless; every call rebuilds the full Context from Contextual's Fixed/Soft state. Multiple providers (Anthropic, OpenAI, Google, Mistral, Bedrock). Pick this when you want pure context control.
+- `pi-coding-agent`: spawns the `pi` CLI per dispatch. Use it when you want pi's native
+  session tree, fork support, and on-disk workspace materialization.
+- `pi-ai`: runs in process through `@earendil-works/pi-ai`. Use it when you want each
+  request rebuilt from Contextual's explicit Fixed and Soft state.
 
-Toggle per-thread via the backend chip in the top bar.
-
-## Setup
-
-Contextual is part of a small workspace: it consumes `hudsonkit` (UI chrome) from the
-sibling `hudson` repo and shared primitives from the sibling `studio` repo. `bun run
-setup` checks those out next to this repo (idempotent) so `bun install` can resolve the
-workspace deps:
-
-```bash
-bun run setup   # clones ../hudson and ../studio if missing, builds hudsonkit
-bun install
-```
-
-If you already have `../hudson` and `../studio` checked out, `bun run setup` is a no-op
-and you can go straight to `bun install`.
-
-For the fully offline **demo** path you can stop here — `CONTEXTUAL_DEMO=1 bun dev` needs
-no backend. The sections below cover wiring a real backend for live dispatch.
-
-For the **pi-coding-agent** backend, install pi globally:
+For `pi-coding-agent`:
 
 ```bash
 npm install -g @earendil-works/pi-coding-agent
-pi login   # OAuth or API key, your choice
+pi login
 ```
 
-For the **pi-ai** backend, you have two auth choices:
-
-- **Recommended: Claude Pro/Max subscription** — click any Anthropic option in the backend chip; if not signed in, the OAuth flow opens automatically. Credentials persist to `~/.contextual/credentials.json` and refresh on demand.
-- **API key** — set `ANTHROPIC_API_KEY` (or the equivalent for whichever provider you pick). Storage goes through the `secret` CLI so the value never lands in a `.env` file:
-
-  ```bash
-  secret set ANTHROPIC_API_KEY     # prompts for the value
-  ```
-
-  Then run the dev server with the credential injected into the child env:
-
-  ```bash
-  secret run ANTHROPIC_API_KEY -- bun dev
-  ```
-
-## Run
-
-For the primary Next AppShell host:
+For `pi-ai`, either use provider OAuth where available or inject an API key through your
+local secret manager, for example:
 
 ```bash
-bun dev                     # uses your real ~/.claude + ~/.codex sessions
-CONTEXTUAL_DEMO=1 bun dev    # curated demo corpus, fully offline
+secret set ANTHROPIC_API_KEY
+secret run ANTHROPIC_API_KEY -- bun dev
 ```
 
-Open `http://localhost:5180`. On first launch you'll get a one-time welcome tour; the
-**Demo** chip in the top bar lets you switch between the demo corpus and your own
-sessions at any time.
+## Project Map
 
-The legacy Vite prototype is still available for older live-dispatch paths:
+| Path | Purpose |
+| --- | --- |
+| `src/server/session-analysis/*` | transcript readers, atom extraction, bucket classification, recipe drafts |
+| `src/server/harnesses/*` | harness-neutral catalog, at-rest records, turns, and manifests |
+| `src/lib/harnessContract.ts` | shared REST and TypeScript contract for harness exploration |
+| `src/components/analysis/*` | Explore workbench |
+| `src/contextualApp/*` | Hudson AppShell integration and product state |
+| `src/studio/*` | Studio docs, registry, and prototypes |
+| `src/lib/backends/*` | live backend dispatch paths and pi integration |
+| `docs/` | active engineering notes, contracts, and design specs |
+| `context-data/` | reusable seed context and captured demo material |
 
-```bash
-bun run dev:vite
-```
+## Design Principles
 
-## Architecture
+- Source truth first: native logs, manifests, docs, and sidecars remain the evidence.
+- Interpretation second: atoms, buckets, slices, and packages are Contextual's model.
+- Lineage must be explicit: native forks, replay forks, recipe-derived launches, and
+  manual starts are different claims.
+- Plans should be auditable before execution.
+- If the product cannot prove a continuity claim, it should not imply one.
 
-- `src/server/harnesses/*` - harness-neutral catalog, at-rest, turns, manifests
-- `src/lib/harnessContract.ts` - shared REST contract and client helpers
-- `src/server/session-analysis/*` - Contextual atoms, slices, buckets, and recipe drafts
-- `src/contextualApp/*` - Hudson AppShell product surface
-- `src/lib/backends/*` - legacy/live backend dispatch paths and pi integration
-
-Contextual owns the upstream artifacts: packages, launch recipes, instantiation records, fork plans, and replay bundles. Harness-native sessions remain important, but they are treated as sources and targets rather than the whole product model.
-
-Start with [docs/ENG-contextual-platform.md](docs/ENG-contextual-platform.md) for the current engineering vision.
+Start with [docs/INDEX.md](docs/INDEX.md) and
+[docs/ENG-contextual-platform.md](docs/ENG-contextual-platform.md) for the current
+engineering direction.

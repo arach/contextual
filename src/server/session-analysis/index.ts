@@ -1788,7 +1788,9 @@ function parsePiJsonl(source: SessionSource, jsonl: string): SessionAnalysis {
         } else if (part.type === "thinking") {
           const text = String(part.thinking ?? "");
           if (!text.trim()) continue;
-          pushChunk(chunks, classifyAssistantText(text), text, null, false, "assistant reasoning", {
+          // Reasoning is a decision atom regardless of harness (matches the codex
+          // path); don't gate it behind decision keywords in the free text.
+          pushChunk(chunks, "decisions", text, null, false, "assistant reasoning", {
             sourceType: "reasoning",
             role: "assistant",
             ...meta,
@@ -1858,7 +1860,9 @@ function parseGrokAcpJsonl(source: SessionSource, jsonl: string): SessionAnalysi
         ...meta,
       });
     } else if (kind === "thought") {
-      pushChunk(chunks, classifyAssistantText(text), text, null, false, "assistant reasoning", {
+      // Reasoning is a decision atom regardless of harness (matches the codex
+      // path); don't gate it behind decision keywords in the free text.
+      pushChunk(chunks, "decisions", text, null, false, "assistant reasoning", {
         sourceType: "reasoning",
         role: "assistant",
         ...meta,

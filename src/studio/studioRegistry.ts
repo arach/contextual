@@ -53,6 +53,8 @@ export const BUCKETS = [
 ] as const;
 
 export const PACKAGE_VIEW_PROTOTYPE_HREF = "/studio/package-view";
+export const REPLAY_PROTOTYPE_HREF = "/studio/replay";
+export const SESSION_OBSERVE_PROTOTYPE_HREF = "/studio/session-observe";
 
 export function bucketLabel(bucket: StudioBucket): string {
   switch (bucket) {
@@ -111,6 +113,25 @@ export function buildContextualRegistry(
       status: "draft",
       blurb: "Redesign prototype: guided flow → diff-on-cards. Mock data, faked agent.",
       source: ["src/studio/prototypes/PackageViewPrototype.tsx"],
+    },
+    {
+      href: SESSION_OBSERVE_PROTOTYPE_HREF,
+      label: "Single session — turns × accumulation",
+      bucket: "prototypes",
+      surface: "engineering",
+      status: "draft",
+      blurb:
+        "One session read turn by turn: a pinned accumulation mountain and stat-bar above, a scrolling conversation log below, and a per-turn impact panel — joined by a single shared cursor. Real demo data.",
+      source: ["src/studio/prototypes/SessionObservePrototype.tsx"],
+    },
+    {
+      href: REPLAY_PROTOTYPE_HREF,
+      label: "Replay — turn-by-turn",
+      bucket: "prototypes",
+      surface: "engineering",
+      status: "draft",
+      blurb: "Scrub 4 harness lanes of the Hunt scenario in lockstep. Real demo data.",
+      source: ["src/studio/prototypes/ReplayPrototype.tsx"],
     },
     ...presentations.map(
       (p): ContextualStudioPage => ({
