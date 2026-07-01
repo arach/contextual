@@ -23,6 +23,7 @@ export function AppContent() {
     inFlightTokens,
     dispatch,
     createDesignedSession,
+    openReplay,
     treeOpen,
     setTreeOpen,
     flagsOpen,
@@ -70,6 +71,7 @@ export function AppContent() {
             state={explore}
             showContextConsole={false}
             onOpenTree={treeOn ? () => setTreeOpen(true) : undefined}
+            onReplaySession={openReplay}
           />
         )}
       </div>
