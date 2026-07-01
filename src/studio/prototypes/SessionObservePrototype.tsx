@@ -451,6 +451,43 @@ const OBSERVE_PALETTE = {
   "--hg-accent": "#ff8636",
 } as CSSProperties;
 
+/* ------------------------------------------------------------------ *
+ * Responsive tier — keyed off the VIEWPORT (not the inner container, which the
+ * left rail shrinks). Driven by matchMedia so it is a true viewport query and
+ * side-steps a Tailwind-cascade quirk in this build where a responsive `flex`
+ * cannot re-show a base `hidden`. Tiers:
+ *   • "wide" ≥ 1440px : left list + timeline + right impact column together.
+ *   • "mid"  1000–1440: left list + timeline; right impact collapses inline.
+ *   • "narrow" < 1000 : left list collapses to a compact selector.
+ * SSR-safe: renders "wide" on the server / first paint, then corrects on mount.
+ * ------------------------------------------------------------------ */
+type ViewportTier = "narrow" | "mid" | "wide";
+const MID_MIN_PX = 1000;
+const WIDE_MIN_PX = 1440;
+
+function tierFor(width: number): ViewportTier {
+  if (width >= WIDE_MIN_PX) return "wide";
+  if (width >= MID_MIN_PX) return "mid";
+  return "narrow";
+}
+
+function useViewportTier(): ViewportTier {
+  const [tier, setTier] = useState<ViewportTier>("wide");
+  useEffect(() => {
+    const midQuery = window.matchMedia(`(min-width: ${MID_MIN_PX}px)`);
+    const wideQuery = window.matchMedia(`(min-width: ${WIDE_MIN_PX}px)`);
+    const sync = () => setTier(tierFor(window.innerWidth));
+    sync();
+    midQuery.addEventListener("change", sync);
+    wideQuery.addEventListener("change", sync);
+    return () => {
+      midQuery.removeEventListener("change", sync);
+      wideQuery.removeEventListener("change", sync);
+    };
+  }, []);
+  return tier;
+}
+
 /* ================================================================== *
  * Page
  * ================================================================== */
@@ -552,15 +589,37 @@ function ObserveStage() {
     );
   }
 
+  return <ObserveWorkspace active={active} sessions={sessions} onPick={setActiveId} />;
+}
+
+/* ================================================================== *
+ * Workspace — joins the LEFT session list to the instrument, laid out off the
+ * viewport tier. narrow → stacked (compact selector above the tool); mid/wide →
+ * side-by-side (full list column beside the tool).
+ * ================================================================== */
+function ObserveWorkspace({
+  active,
+  sessions,
+  onPick,
+}: {
+  active: SessionModel;
+  sessions: SessionModel[];
+  onPick: (id: string) => void;
+}) {
+  const tier = useViewportTier();
+  const stacked = tier === "narrow";
+
   return (
     <div
       style={OBSERVE_PALETTE}
-      className="flex flex-col gap-3 min-[1000px]:flex-row min-[1000px]:items-stretch min-[1000px]:gap-4"
+      className={
+        "flex items-stretch " + (stacked ? "flex-col gap-3" : "flex-row gap-4")
+      }
     >
       {/* LEFT SESSION LIST — full column ≥ 1000px; a compact selector below. */}
-      <SessionList sessions={sessions} activeId={active.id} onPick={setActiveId} />
+      <SessionList sessions={sessions} activeId={active.id} onPick={onPick} tier={tier} />
       <div className="min-w-0 flex-1">
-        <ObserveInstrument key={active.id} model={active} />
+        <ObserveInstrument key={active.id} model={active} tier={tier} />
       </div>
     </div>
   );
@@ -578,20 +637,22 @@ function SessionList({
   sessions,
   activeId,
   onPick,
+  tier,
 }: {
   sessions: SessionModel[];
   activeId: string;
   onPick: (id: string) => void;
+  tier: ViewportTier;
 }) {
-  return (
-    <>
-      {/* Compact selector — VISIBLE only < 1000px (viewport). */}
-      <div className="min-[1000px]:hidden">
-        <SessionCompactSelector sessions={sessions} activeId={activeId} onPick={onPick} />
-      </div>
+  // narrow → a compact dropdown so the timeline keeps the room;
+  // mid/wide → the full ~210px scroll column.
+  if (tier === "narrow") {
+    return <SessionCompactSelector sessions={sessions} activeId={activeId} onPick={onPick} />;
+  }
 
-      {/* Full list column — VISIBLE only ≥ 1000px (viewport). */}
-      <aside className="hidden w-[210px] shrink-0 flex-col overflow-hidden rounded-[8px] border border-[var(--hg-hairline)] bg-[var(--hg-bg)] min-[1000px]:flex xl:w-[220px]">
+  return (
+    /* Full list column — the ≥ 1000px layout. */
+    <aside className="flex w-[210px] shrink-0 flex-col overflow-hidden rounded-[8px] border border-[var(--hg-hairline)] bg-[var(--hg-bg)] xl:w-[220px]">
         <div className="border-b border-[var(--hg-line)] bg-[var(--hg-surface-2)] px-3 py-2.5">
           <span className="hg-section-label">sessions · {sessions.length}</span>
         </div>
@@ -645,8 +706,7 @@ function SessionList({
             })}
           </div>
         </div>
-      </aside>
-    </>
+    </aside>
   );
 }
 
@@ -718,8 +778,9 @@ function SessionCompactSelector({
  * ================================================================== */
 const PLAY_INTERVAL_MS = 700;
 
-function ObserveInstrument({ model }: { model: SessionModel }) {
+function ObserveInstrument({ model, tier }: { model: SessionModel; tier: ViewportTier }) {
   const lastRow = model.turns.length - 1;
+  const showImpactColumn = tier === "wide"; // right column only ≥ 1440px viewport
   const [cursor, setCursor] = useState(0);
   const [playing, setPlaying] = useState(false);
 
@@ -875,18 +936,28 @@ function ObserveInstrument({ model }: { model: SessionModel }) {
       </div>
 
       {/* ZONES 2 + 3 — scrollable timeline | responsive impact column.
-          Gated by VIEWPORT width (min-[1440px]) so the left rail shrinking the
-          container never collapses the impact column prematurely. Below 1440px
-          the timeline goes full width and the active row surfaces impact inline. */}
-      <div className="grid min-[1440px]:grid-cols-[minmax(0,1fr)_360px]">
+          Gated by the VIEWPORT tier (not container width — the left rail shrinks
+          the container). Only the "wide" tier (≥ 1440px) mounts the right impact
+          column; below that the timeline goes full width and the active row
+          surfaces its impact inline. */}
+      <div
+        className="grid"
+        style={{
+          gridTemplateColumns: showImpactColumn ? "minmax(0,1fr) 360px" : "minmax(0,1fr)",
+        }}
+      >
         {/* ZONE 2 — SCROLLABLE TIMELINE (the only thing that scrolls). */}
         <div
           ref={scrollRef}
-          className="relative max-h-[560px] min-h-[460px] overflow-y-auto overflow-x-hidden overscroll-contain border-[var(--hg-line)] min-[1440px]:border-r"
+          className={
+            "relative max-h-[560px] min-h-[460px] overflow-y-auto overflow-x-hidden overscroll-contain border-[var(--hg-line)] " +
+            (showImpactColumn ? "border-r" : "")
+          }
         >
           <ConversationLog
             model={model}
             cursor={cursor}
+            showInlineImpact={!showImpactColumn}
             onSeekRow={seekToRow}
             registerRow={(i, el) => {
               rowRefs.current[i] = el;
@@ -894,10 +965,12 @@ function ObserveInstrument({ model }: { model: SessionModel }) {
           />
         </div>
 
-        {/* ZONE 3 — IMPACT OF TURN N. Removed < 1440px (viewport width). */}
-        <div className="hidden max-h-[560px] overflow-y-auto bg-[var(--hg-bg)] min-[1440px]:block">
-          <ImpactPanel model={model} cursor={cursor} turn={currentTurn} />
-        </div>
+        {/* ZONE 3 — IMPACT OF TURN N. Mounted only on the "wide" tier. */}
+        {showImpactColumn && (
+          <div className="max-h-[560px] overflow-y-auto bg-[var(--hg-bg)]">
+            <ImpactPanel model={model} cursor={cursor} turn={currentTurn} />
+          </div>
+        )}
       </div>
 
       <TurnFooter model={model} turn={currentTurn} cursor={cursor} />
@@ -1369,11 +1442,13 @@ function BucketLegend({ buckets }: { buckets: ContextBucketId[] }) {
 function ConversationLog({
   model,
   cursor,
+  showInlineImpact,
   onSeekRow,
   registerRow,
 }: {
   model: SessionModel;
   cursor: number;
+  showInlineImpact: boolean;
   onSeekRow: (rowIdx: number) => void;
   registerRow: (rowIdx: number, el: HTMLDivElement | null) => void;
 }) {
@@ -1390,6 +1465,7 @@ function ConversationLog({
             rowIdx={i}
             isCurrent={i === cursor}
             isPast={i <= cursor}
+            showInlineImpact={showInlineImpact}
             onSeek={() => onSeekRow(i)}
             registerRow={registerRow}
           />
@@ -1405,6 +1481,7 @@ function TurnRowView({
   rowIdx,
   isCurrent,
   isPast,
+  showInlineImpact,
   onSeek,
   registerRow,
 }: {
@@ -1413,6 +1490,7 @@ function TurnRowView({
   rowIdx: number;
   isCurrent: boolean;
   isPast: boolean;
+  showInlineImpact: boolean;
   onSeek: () => void;
   registerRow: (rowIdx: number, el: HTMLDivElement | null) => void;
 }) {
@@ -1517,11 +1595,11 @@ function TurnRowView({
         )}
       </button>
 
-      {/* Narrow-only inline impact: when the right column is collapsed
-          (< 1440px viewport), the ACTIVE row expands its window-as-of-N
-          composition inline so the impact detail is never lost. */}
-      {isCurrent && (
-        <div className="mt-2 min-[1440px]:hidden">
+      {/* Inline impact: when the right column is collapsed (below the "wide"
+          tier), the ACTIVE row expands its window-as-of-N composition inline so
+          the impact detail is never lost. */}
+      {isCurrent && showInlineImpact && (
+        <div className="mt-2">
           <InlineWindowImpact model={model} cursor={rowIdx} />
         </div>
       )}
