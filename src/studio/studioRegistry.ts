@@ -121,7 +121,7 @@ export function buildContextualRegistry(
       surface: "engineering",
       status: "draft",
       blurb:
-        "One session read turn by turn: a pinned accumulation mountain and stat-bar above, a scrolling conversation log below, and a per-turn impact panel — joined by a single shared cursor. Real demo data.",
+        "One session read turn by turn: pick from a left session list, then a pinned accumulation mountain and stat-bar above, a scrolling conversation log below, and a per-turn impact panel — joined by a single shared cursor and driven by a play/pause/step transport. Real demo data.",
       source: ["src/studio/prototypes/SessionObservePrototype.tsx"],
     },
     {
