@@ -1,0 +1,10 @@
+{
+  "name": "eve-relay",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Eve canvas — arrow/element binding geometry. Rectangles bind today; ellipse binding is the relay feature.",
+  "scripts": {
+    "test": "node test.mjs"
+  }
+}

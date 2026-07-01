@@ -389,6 +389,7 @@ const DEMO_SESSION_SOURCES: SessionSource[] = [
 // harness + model live in each source's title/metadata (pi ran on MiniMax, not
 // codex — the --provider openai-codex flag didn't take effect on this capture).
 const SEED_SESSION_DIR = join(process.cwd(), "context-data", "seed-sessions", "eve-binding");
+const SEED_RELAY_DIR = join(process.cwd(), "context-data", "seed-sessions", "eve-relay");
 const SEED_SESSION_SOURCES: SessionSource[] = [
   {
     id: "eve-binding--codex-gpt-5-5",
@@ -440,6 +441,87 @@ const SEED_SESSION_SOURCES: SessionSource[] = [
     observedAtMs: Date.parse("2026-06-30T18:46:00Z"),
     summary:
       "grok — same bindingPoint fix driven through the grok agent over ACP, auth'd locally (the ACP transcript carries no model id).",
+  },
+
+  // ── Relay captures (eve-relay scenario, "Relay" posture: context built to be
+  // picked up by another agent). Each harness ran a two-stage relay against an
+  // identical sandbox — stage A investigates + writes HANDOFF.md (no code),
+  // stage B opens on that handoff and implements ellipse binding to green.
+  {
+    id: "eve-relay--codex-gpt-5-5--investigate",
+    scenario: "eve-relay",
+    model: "gpt-5.5",
+    project: "Eve",
+    title: "Ellipse Binding · investigate — codex · gpt-5.5",
+    source: "codex",
+    timeLabel: "Jun 30, 2026",
+    path: join(SEED_RELAY_DIR, "codex.stage-a.jsonl"),
+    observedAtMs: Date.parse("2026-06-30T21:05:00Z"),
+    summary:
+      "codex · gpt-5.5 — Relay stage A: investigates rectangle binding across geometry/shapes/binding, then writes a HANDOFF.md plan for the next agent (no code).",
+  },
+  {
+    id: "eve-relay--codex-gpt-5-5--implement",
+    scenario: "eve-relay",
+    model: "gpt-5.5",
+    project: "Eve",
+    title: "Ellipse Binding · implement — codex · gpt-5.5",
+    source: "codex",
+    timeLabel: "Jun 30, 2026",
+    path: join(SEED_RELAY_DIR, "codex.stage-b.jsonl"),
+    observedAtMs: Date.parse("2026-06-30T21:13:40Z"),
+    summary:
+      "codex · gpt-5.5 — Relay stage B: opens on HANDOFF.md and implements ellipse binding (ray-from-center) to a green suite (9/9).",
+  },
+  {
+    id: "eve-relay--claude-opus-4-8--investigate",
+    scenario: "eve-relay",
+    model: "claude-opus-4-8",
+    project: "Eve",
+    title: "Ellipse Binding · investigate — claude · claude-opus-4-8",
+    source: "claude",
+    timeLabel: "Jun 30, 2026",
+    path: join(SEED_RELAY_DIR, "claude.stage-a.jsonl"),
+    observedAtMs: Date.parse("2026-06-30T21:07:00Z"),
+    summary:
+      "claude · claude-opus-4-8 — Relay stage A: investigates the binding seam and writes a HANDOFF.md plan for the next agent (no code).",
+  },
+  {
+    id: "eve-relay--claude-opus-4-8--implement",
+    scenario: "eve-relay",
+    model: "claude-opus-4-8",
+    project: "Eve",
+    title: "Ellipse Binding · implement — claude · claude-opus-4-8",
+    source: "claude",
+    timeLabel: "Jun 30, 2026",
+    path: join(SEED_RELAY_DIR, "claude.stage-b.jsonl"),
+    observedAtMs: Date.parse("2026-06-30T21:15:00Z"),
+    summary:
+      "claude · claude-opus-4-8 — Relay stage B: opens on HANDOFF.md and implements ellipse binding to a green suite (9/9).",
+  },
+  {
+    id: "eve-relay--grok--investigate",
+    scenario: "eve-relay",
+    project: "Eve",
+    title: "Ellipse Binding · investigate — grok",
+    source: "grok",
+    timeLabel: "Jun 30, 2026",
+    path: join(SEED_RELAY_DIR, "grok.stage-a.jsonl"),
+    observedAtMs: Date.parse("2026-06-30T21:09:00Z"),
+    summary:
+      "grok — Relay stage A: investigates the binding seam and writes a 245-line HANDOFF.md plan for the next agent (no code).",
+  },
+  {
+    id: "eve-relay--grok--implement",
+    scenario: "eve-relay",
+    project: "Eve",
+    title: "Ellipse Binding · implement — grok",
+    source: "grok",
+    timeLabel: "Jun 30, 2026",
+    path: join(SEED_RELAY_DIR, "grok.stage-b.jsonl"),
+    observedAtMs: Date.parse("2026-06-30T21:17:00Z"),
+    summary:
+      "grok — Relay stage B: opens on the handoff and implements ellipse binding to a green suite (9/9).",
   },
 ];
 
@@ -736,10 +818,21 @@ function classifyAssistantText(text: string): ContextBucketId {
 function classifyToolOutput(output: string, command: string): ContextBucketId {
   const commandLower = command.toLowerCase();
   const lower = `${command}\n${output.slice(0, 8000)}`.toLowerCase();
+  // The atom that READS a handoff document back is the load-bearing moment of a
+  // relay — one agent's written plan, picked up by the next. Key on the command
+  // *targeting* the handoff file (a path to / a read of HANDOFF.md), not the word
+  // appearing anywhere in output: code, diffs, and git status that merely mention
+  // the handoff file must stay codebase/environment.
+  if (/\bhand-?off\b/.test(commandLower) || /\bhandover\b/.test(commandLower)) {
+    return "collaboration";
+  }
   if (
     commandLower.includes("xcodebuild") ||
     commandLower.includes("bun run build") ||
     commandLower.includes("bun test") ||
+    commandLower.includes("npm test") ||
+    commandLower.includes("npm run test") ||
+    commandLower.includes("node test.mjs") ||
     commandLower.includes("typecheck") ||
     commandLower.includes("vite build") ||
     commandLower.includes("swift build") ||

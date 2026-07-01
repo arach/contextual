@@ -524,6 +524,9 @@ function ExploreSessionRow({
 function AllocationInspector({ state }: { state: AnalysisState }) {
   const session = state.active;
   const snapshot = state.activeSnapshot;
+  // Advanced: the window-budget simulator graduates in via a flag. Default off,
+  // so the Inspector stays focused on explaining composition, not compaction.
+  const windowOn = useContextualFlag("explore.window");
 
   if (!session || !snapshot) {
     if (state.loadPhase.stage === "active" || state.loadPhase.stage === "corpus") {
@@ -553,26 +556,28 @@ function AllocationInspector({ state }: { state: AnalysisState }) {
         </div>
       </div>
 
-      <div className="mb-4 border border-dashed border-[var(--hg-hairline)] rounded-[2px] p-3">
-        <div className="hg-section-label mb-2">threshold</div>
-        <div className="grid grid-cols-5 gap-1">
-          {ANALYSIS_THRESHOLDS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => state.setThreshold(value)}
-              className={
-                "hg-mono rounded-[2px] border px-1.5 py-1.5 text-[9px] uppercase tracking-wider " +
-                (state.threshold === value
-                  ? "border-[var(--hg-accent)] bg-[var(--hg-accent)] text-[var(--hg-bg)]"
-                  : "border-[var(--hg-line)] bg-[var(--hg-bg-tint)] text-[var(--hg-muted)] hover:text-[var(--hg-ink)]")
-              }
-            >
-              {formatAnalysisTokens(value)}
-            </button>
-          ))}
+      {windowOn && (
+        <div className="mb-4 border border-dashed border-[var(--hg-hairline)] rounded-[2px] p-3">
+          <div className="hg-section-label mb-2">window budget</div>
+          <div className="grid grid-cols-5 gap-1">
+            {ANALYSIS_THRESHOLDS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => state.setThreshold(value)}
+                className={
+                  "hg-mono rounded-[2px] border px-1.5 py-1.5 text-[9px] uppercase tracking-wider " +
+                  (state.threshold === value
+                    ? "border-[var(--hg-accent)] bg-[var(--hg-accent)] text-[var(--hg-bg)]"
+                    : "border-[var(--hg-line)] bg-[var(--hg-bg-tint)] text-[var(--hg-muted)] hover:text-[var(--hg-ink)]")
+                }
+              >
+                {formatAnalysisTokens(value)}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <StackedBar allocations={snapshot.allocations} />
 
