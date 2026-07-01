@@ -10,15 +10,15 @@ interface RackZoneProps {
 
 export function RackZone({ label, sublabel, meta }: RackZoneProps) {
   return (
-    <div className="flex items-baseline gap-2 px-1 pt-2 pb-1.5 mb-1 border-b border-dashed border-[var(--hg-hairline)]">
-      <span className="hg-mono text-[10.5px] tracking-wider uppercase text-[var(--hg-ink-2)] font-medium">
+    <div className="flex items-baseline gap-2 px-1 pt-3 pb-1.5 mb-0.5 border-b border-[var(--hg-line)]">
+      <span className="font-mono text-[10px] tracking-wider uppercase text-neutral-400">
         {label}
       </span>
-      <span className="hg-mono text-[10px] tracking-wider uppercase text-[var(--hg-accent)]">
-        — {sublabel}
+      <span className="font-mono text-[10px] tracking-wide text-neutral-600 normal-case">
+        {sublabel}
       </span>
       {meta && (
-        <span className="hg-mono text-[10px] text-[var(--hg-muted)] ml-auto tracking-wider uppercase">
+        <span className="font-mono text-[9.5px] text-neutral-600 ml-auto tracking-wide normal-case">
           {meta}
         </span>
       )}

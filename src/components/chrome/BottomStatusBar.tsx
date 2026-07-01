@@ -1,5 +1,3 @@
-// Hudson's StatusBar holds the always-visible live numbers: which thread is
-// active, how loaded the context is, what fraction of budget is free.
 import { StatusBar } from "hudsonkit/chrome";
 import { fmtTokens } from "@/lib/tokens";
 import { TOTAL_BUDGET } from "@/types";
@@ -23,26 +21,23 @@ export function BottomStatusBar({
   const free = Math.max(0, TOTAL_BUDGET - total);
   return (
     <StatusBar
-      status={{ label: "ONLINE", color: "emerald" }}
+      status={{ label: "ready", color: "neutral" }}
       left={
-        <div className="flex items-center gap-3 hg-mono text-[10.5px]">
-          <span className="text-[var(--hg-muted)]">thread</span>
-          <span className="text-[var(--hg-ink)] uppercase tracking-wider">
+        <div className="flex items-center gap-3 font-mono text-[12px]">
+          <span className="text-neutral-500">thread</span>
+          <span className="text-neutral-100 uppercase tracking-wider">
             {threadId}/{branchName}
           </span>
-          <span className="text-[var(--hg-hairline)]">·</span>
-          <span className="text-[var(--hg-muted)]">turn</span>
-          <span className="text-[var(--hg-ink)]">{turn}</span>
+          <span className="h-3 w-px bg-neutral-700" />
+          <span className="text-neutral-500">turn</span>
+          <span className="text-neutral-100">{turn}</span>
         </div>
       }
       right={
-        <div className="flex items-center gap-3 hg-mono text-[10.5px]">
-          <span className="text-[var(--hg-muted)]">fix</span>
-          <span className="text-[var(--hg-ink)]">{fmtTokens(fixedTokens)}</span>
-          <span className="text-[var(--hg-muted)]">soft</span>
-          <span className="text-[var(--hg-accent)]">{fmtTokens(softTokens)}</span>
-          <span className="text-[var(--hg-muted)]">free</span>
-          <span className="text-[var(--hg-ink)]">{fmtTokens(free)}</span>
+        <div className="flex items-center gap-3 font-mono text-[11px] text-neutral-500">
+          <span>fix {fmtTokens(fixedTokens)}</span>
+          <span>soft {fmtTokens(softTokens)}</span>
+          <span>free {fmtTokens(free)}</span>
         </div>
       }
     />

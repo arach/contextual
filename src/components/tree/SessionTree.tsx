@@ -5,6 +5,8 @@
 // Rendered as a fixed overlay above the chrome. ESC or backdrop click closes.
 
 import { useEffect, useMemo, useState } from "react";
+import { HudTree } from "hudsonkit/patterns";
+import type { HudTreeNode } from "hudsonkit/patterns";
 import type { SessionSummary, TreeResponse } from "@/lib/backends/client";
 import { fetchTree } from "@/lib/backends/client";
 
@@ -47,6 +49,43 @@ function buildForest(data: TreeResponse): TreeNode[] {
   return roots;
 }
 
+function collectExpandedIds(nodes: TreeNode[]): string[] {
+  return nodes.flatMap((node) => [
+    node.session.path,
+    ...collectExpandedIds(node.children),
+  ]);
+}
+
+function toHudTreeNode(node: TreeNode): HudTreeNode {
+  const s = node.session;
+  return {
+    id: s.path,
+    title: s.firstUserText || "(no user message yet)",
+    description: (
+      <span>
+        {s.id.slice(0, 8)} · {s.userCount}u/{s.assistantCount}a ·{" "}
+        {(s.totalTokens / 1000).toFixed(1)}k tokens
+      </span>
+    ),
+    badge:
+      node.bindings.length > 0 ? (
+        <span className="flex flex-wrap justify-end gap-1">
+          {node.bindings.map((binding) => (
+            <span key={binding} className="hg-pill accent text-[9.5px]">
+              {binding.split("::").join("/")}
+            </span>
+          ))}
+        </span>
+      ) : undefined,
+    trailing: (
+      <span className="hg-mono text-[9.5px] uppercase tracking-wider text-[var(--hg-muted)]">
+        ${s.totalCost.toFixed(4)}
+      </span>
+    ),
+    children: node.children.map(toHudTreeNode),
+  };
+}
+
 export function SessionTree({ isOpen, onClose }: SessionTreeProps) {
   const [data, setData] = useState<TreeResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -72,6 +111,8 @@ export function SessionTree({ isOpen, onClose }: SessionTreeProps) {
   }, [isOpen, onClose]);
 
   const forest = useMemo(() => (data ? buildForest(data) : []), [data]);
+  const treeNodes = useMemo(() => forest.map(toHudTreeNode), [forest]);
+  const expandedIds = useMemo(() => collectExpandedIds(forest), [forest]);
 
   if (!isOpen) return null;
 
@@ -81,7 +122,7 @@ export function SessionTree({ isOpen, onClose }: SessionTreeProps) {
       onClick={onClose}
     >
       <div
-        className="bg-[var(--hg-bg)] border border-[var(--hg-line)] rounded-[2px] w-full max-w-[860px] max-h-full overflow-hidden flex flex-col shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]"
+        className="bg-[var(--hg-bg)] border border-[var(--hg-line)] rounded-[2px] w-full max-w-[860px] max-h-full overflow-hidden flex flex-col shadow-[var(--ctx-modal-shadow)]"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center gap-3 px-5 py-3 border-b border-[var(--hg-line)] bg-[var(--hg-surface-2)]">
@@ -104,44 +145,17 @@ export function SessionTree({ isOpen, onClose }: SessionTreeProps) {
               no sessions yet — dispatch a message to create one.
             </div>
           )}
-          {forest.map((root) => (
-            <TreeNodeView key={root.session.path} node={root} depth={0} />
-          ))}
+          {treeNodes.length > 0 && (
+            <HudTree
+              key={expandedIds.join("|")}
+              nodes={treeNodes}
+              defaultExpandedIds={expandedIds}
+              density="compact"
+              className="gap-1"
+            />
+          )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function TreeNodeView({ node, depth }: { node: TreeNode; depth: number }) {
-  const s = node.session;
-  return (
-    <div>
-      <div
-        className="flex items-baseline gap-3 py-1.5 border-b border-dashed border-[var(--hg-hairline)]"
-        style={{ paddingLeft: depth * 24 }}
-      >
-        {depth > 0 && (
-          <span className="text-[var(--hg-hairline)] -ml-3 select-none">└─</span>
-        )}
-        <span className="text-[var(--hg-accent)] tracking-wider">{s.id.slice(0, 8)}</span>
-        <span className="text-[var(--hg-ink)] flex-1 min-w-0 truncate not-italic">
-          {s.firstUserText || "(no user message yet)"}
-        </span>
-        {node.bindings.map((b) => (
-          <span key={b} className="hg-pill accent text-[9.5px]">
-            {b.split("::").join("/")}
-          </span>
-        ))}
-        <span className="text-[var(--hg-muted)]">
-          {s.userCount}u/{s.assistantCount}a
-        </span>
-        <span className="text-[var(--hg-muted)]">{(s.totalTokens / 1000).toFixed(1)}k</span>
-        <span className="text-[var(--hg-muted)]">${s.totalCost.toFixed(4)}</span>
-      </div>
-      {node.children.map((c) => (
-        <TreeNodeView key={c.session.path} node={c} depth={depth + 1} />
-      ))}
     </div>
   );
 }

@@ -32,7 +32,7 @@ export function ThreadItem({
       className={
         "px-3 py-2 mb-1 rounded-[2px] cursor-pointer border " +
         (isActive
-          ? "hg-reticle border-[var(--hg-accent)] bg-[rgba(255,123,44,0.08)]"
+          ? "border-[var(--hg-accent)] bg-[var(--hg-accent-tint)]"
           : "border-transparent hover:bg-[var(--hg-bg-tint)]")
       }
     >
@@ -40,9 +40,7 @@ export function ThreadItem({
         <span
           className={
             "w-[7px] h-[7px] rounded-full mt-1.5 flex-shrink-0 " +
-            (live
-              ? "bg-[var(--hg-accent)] shadow-[0_0_8px_var(--hg-accent)]"
-              : "bg-[var(--hg-muted)]")
+            (live ? "bg-[var(--hg-accent)]" : "bg-[var(--hg-muted)]")
           }
         />
         <div className="flex-1 min-w-0">

@@ -1,43 +1,47 @@
-// Branches as terse mono pills. The "+ branch" pill triggers a fork action.
 import type { MouseEvent } from "react";
 
 interface BranchPillsProps {
   branches: string[];
   activeBranch: string;
   onSelect: (b: string) => void;
-  onBranch: () => void;
+  /** Omitted when the Fork flag is off — the "+ branch" control is hidden. */
+  onBranch?: () => void;
 }
 
 export function BranchPills({ branches, activeBranch, onSelect, onBranch }: BranchPillsProps) {
   const stop = (e: MouseEvent) => e.stopPropagation();
   return (
-    <div className="mt-2 flex flex-wrap gap-1" onClick={stop}>
+    <div className="mt-1.5 flex flex-wrap gap-1" onClick={stop}>
       {branches.map((b) => (
         <button
           key={b}
+          type="button"
           onClick={(e) => {
             stop(e);
             onSelect(b);
           }}
           className={
-            "hg-mono text-[9.5px] tracking-wider px-1.5 py-[1px] rounded-[2px] border " +
+            "text-[11px] px-1.5 py-0.5 rounded border " +
             (b === activeBranch
-              ? "bg-[var(--hg-accent)] text-[var(--hg-bg)] border-[var(--hg-accent)]"
-              : "bg-[var(--hg-bg-tint)] text-[var(--hg-ink-2)] border-transparent hover:border-[var(--hg-line)]")
+              ? "bg-[var(--ctx-accent-tint)] text-[var(--ctx-ink-2)] border-[var(--ctx-accent-line)]"
+              : "bg-transparent text-neutral-600 border-transparent hover:text-neutral-400")
           }
         >
           {b}
         </button>
       ))}
-      <button
-        onClick={(e) => {
-          stop(e);
-          onBranch();
-        }}
-        className="hg-mono text-[9.5px] tracking-wider px-1.5 py-[1px] rounded-[2px] border border-dashed border-[var(--hg-hairline)] text-[var(--hg-muted)] hover:text-[var(--hg-accent)] hover:border-[var(--hg-accent)]"
-      >
-        + branch
-      </button>
+      {onBranch && (
+        <button
+          type="button"
+          onClick={(e) => {
+            stop(e);
+            onBranch();
+          }}
+          className="text-[11px] px-1.5 py-0.5 text-neutral-600 hover:text-neutral-400"
+        >
+          + branch
+        </button>
+      )}
     </div>
   );
 }

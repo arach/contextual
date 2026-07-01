@@ -1,0 +1,18 @@
+{
+  "scenario": "eve-relay",
+  "posture": "Relay (context built to be picked up by another agent; handoff-dominant)",
+  "caseStudy": "Eve (Excalidraw-style canvas)",
+  "vehicle": "Add ellipse binding to a rectangle-only canvas, as a two-stage relay.",
+  "sandbox": "context-data/seed-lab/eve-relay (zero-dep node; rectangle binding green, 4 ellipse cases red at baseline)",
+  "protocol": {
+    "stageA": "Investigate rectangle binding across geometry.mjs/shapes.mjs/binding.mjs and write HANDOFF.md for the next engineer. No code.",
+    "stageB": "Fresh session: read HANDOFF.md and implement ellipse binding so `npm test` passes. Do not modify tests."
+  },
+  "capturedAt": "2026-06-30",
+  "harnesses": [
+    { "harness": "codex", "model": "gpt-5.5", "stageA": "codex.stage-a.jsonl", "stageB": "codex.stage-b.jsonl", "handoff": "codex.handoff.md", "records": [57, 57], "result": "9/9 green, no deviations" },
+    { "harness": "claude", "model": "claude-opus-4-8", "stageA": "claude.stage-a.jsonl", "stageB": "claude.stage-b.jsonl", "handoff": "claude.handoff.md", "records": [57, 43], "result": "9/9 green" },
+    { "harness": "grok", "model": "(none — ACP transcript carries no model id)", "stageA": "grok.stage-a.jsonl", "stageB": "grok.stage-b.jsonl", "handoff": "grok.handoff.md", "records": [66, 41], "result": "9/9 green" }
+  ],
+  "note": "pi held pending the --provider openai-codex fallback fix. Each session ~24k tokens (~14x the eve-binding Hunt sessions). Stage B's HANDOFF.md read classifies as collaboration/handoff (classifier FIX 1); see docs/design/relay-mapping-audit.md."
+}

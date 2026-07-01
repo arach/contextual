@@ -31,7 +31,7 @@ export function CostChip({ usage }: CostChipProps) {
         className="hg-pill cursor-pointer flex items-center gap-1.5 transition-colors"
         title="last dispatch usage"
       >
-        <span className="w-[5px] h-[5px] rounded-full bg-[var(--hg-accent)] shadow-[0_0_6px_var(--hg-accent)]" />
+        <span className="w-[5px] h-[5px] rounded-full bg-neutral-500" />
         {fmtUsd(usage.costUsd)}
         {usage.cacheRead > 0 && (
           <span className="text-[var(--hg-muted)]">· cache {fmtTok(usage.cacheRead)}</span>
@@ -39,7 +39,7 @@ export function CostChip({ usage }: CostChipProps) {
       </button>
       {open && (
         <div
-          className="absolute right-0 top-[calc(100%+6px)] z-50 w-[240px] bg-[var(--hg-surface)] border border-[var(--hg-line)] rounded-[2px] shadow-[0_12px_30px_-16px_rgba(0,0,0,0.7)] p-3"
+          className="absolute right-0 top-[calc(100%+6px)] z-50 w-[240px] bg-[var(--hg-surface)] border border-[var(--hg-line)] rounded-[2px] shadow-[var(--ctx-pop-shadow)] p-3"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="hg-mono text-[9.5px] tracking-wider uppercase text-[var(--hg-muted)] mb-2">

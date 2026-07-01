@@ -18,11 +18,22 @@ import {
   piCodingAgentBackend,
 } from "./src/lib/backends/pi-coding-agent";
 import { piAiBackend } from "./src/lib/backends/pi-ai";
+import { authStatus, loginProvider } from "./src/lib/backends/oauth";
 import type {
   Backend,
   BranchRequest,
   DispatchRequest,
 } from "./src/lib/backends/types";
+import type {
+  SessionAnalysisAskRequest,
+  SessionPullRequest,
+} from "./src/lib/sessionAnalysis";
+import {
+  getSessionAnalysisAskResponse,
+  getSessionAnalysisResponse,
+  getSessionCatalogResponse,
+  pullSessionAnalysisResponse,
+} from "./src/server/session-analysis";
 
 const BACKENDS: Record<string, Backend> = {
   "pi-coding-agent": piCodingAgentBackend,
@@ -113,6 +124,74 @@ async function handleWorkspace(req: Connect.IncomingMessage, res: ServerResponse
   }
 }
 
+async function handleOAuthStatus(_req: Connect.IncomingMessage, res: ServerResponse) {
+  try {
+    json(res, 200, await authStatus());
+  } catch (e) {
+    json(res, 500, { error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+async function handleOAuthLogin(req: Connect.IncomingMessage, res: ServerResponse) {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const provider = url.searchParams.get("provider");
+  if (!provider) return json(res, 400, { error: "provider required" });
+  try {
+    await loginProvider(provider);
+    json(res, 200, { ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[oauth] login error: ${msg}`);
+    json(res, 500, { error: msg });
+  }
+}
+
+async function handleSessionAnalysis(_req: Connect.IncomingMessage, res: ServerResponse) {
+  try {
+    json(res, 200, await getSessionAnalysisResponse());
+  } catch (e) {
+    json(res, 500, { error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+async function handleSessionCatalog(req: Connect.IncomingMessage, res: ServerResponse) {
+  try {
+    const url = new URL(req.url ?? "", "http://local");
+    const body = await getSessionCatalogResponse({
+      q: url.searchParams.get("q") ?? "",
+      project: url.searchParams.get("project") ?? undefined,
+      limit: Number(url.searchParams.get("limit") ?? 40),
+    });
+    json(res, 200, body);
+  } catch (e) {
+    json(res, 500, { error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+async function handleSessionPull(req: Connect.IncomingMessage, res: ServerResponse) {
+  try {
+    const body = (await readBody(req)) as SessionPullRequest;
+    json(res, 200, await pullSessionAnalysisResponse(body));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    json(res, msg === "path or paths required" ? 400 : 500, { error: msg });
+  }
+}
+
+async function handleSessionAnalysisAsk(req: Connect.IncomingMessage, res: ServerResponse) {
+  try {
+    const body = (await readBody(req)) as SessionAnalysisAskRequest;
+    if (!body.sessionId || !body.question?.trim()) {
+      return json(res, 400, { error: "sessionId and question required" });
+    }
+    json(res, 200, await getSessionAnalysisAskResponse(body));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const status = msg.startsWith("unknown session:") ? 404 : msg === "session has no snapshots" ? 400 : 500;
+    json(res, status, { error: msg });
+  }
+}
+
 const handler: Connect.NextHandleFunction = (req, res, next) => {
   const url = (req.url ?? "").split("?")[0];
   if (req.method === "POST" && url === "/api/dispatch") {
@@ -129,6 +208,30 @@ const handler: Connect.NextHandleFunction = (req, res, next) => {
   }
   if (req.method === "GET" && url === "/api/workspace") {
     void handleWorkspace(req, res);
+    return;
+  }
+  if (req.method === "GET" && url === "/api/oauth/status") {
+    void handleOAuthStatus(req, res);
+    return;
+  }
+  if (req.method === "POST" && url === "/api/oauth/login") {
+    void handleOAuthLogin(req, res);
+    return;
+  }
+  if (req.method === "GET" && url === "/api/session-analysis/catalog") {
+    void handleSessionCatalog(req, res);
+    return;
+  }
+  if (req.method === "POST" && url === "/api/session-analysis/pull") {
+    void handleSessionPull(req, res);
+    return;
+  }
+  if (req.method === "GET" && url === "/api/session-analysis") {
+    void handleSessionAnalysis(req, res);
+    return;
+  }
+  if (req.method === "POST" && url === "/api/session-analysis/ask") {
+    void handleSessionAnalysisAsk(req, res);
     return;
   }
   next();

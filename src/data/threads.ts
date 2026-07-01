@@ -1,15 +1,15 @@
 import type { Thread } from "@/types";
 
-// Initial state for the prototype — a mid-flight design thread plus a few
-// supporting threads to demonstrate per-thread isolation of context.
+// Initial state for the prototype — a mid-flight Eve copilot build thread plus
+// a few supporting threads to demonstrate per-thread isolation of context.
 export const initialThreads: Thread[] = [
   {
     id: "design",
-    name: "design",
+    name: "copilot",
     glyph: "◆",
     lastActive: "2m ago",
     status: "live",
-    branches: ["main", "darker-hero-explore"],
+    branches: ["main", "draw-shape-tool"],
     activeBranch: "main",
     fixed: ["taste-and-voice", "core-architecture", "design-system", "key-decisions"],
     soft: [
@@ -19,7 +19,7 @@ export const initialThreads: Thread[] = [
         age: "44 turns ago",
         tokens: 1800,
         title: "summary · turns 1–20",
-        body: "Established Soft/Fixed split as core mental model. Agreed budget defaults: 35k fixed / 65k soft on design thread.",
+        body: "Wired the copilot route to pi-ai. Streams over SSE from app/api/copilot/route.ts; provider stays behind lib/ai.ts so anthropic→openai is a one-line swap.",
       },
       {
         id: "s2",
@@ -27,7 +27,7 @@ export const initialThreads: Thread[] = [
         age: "24 turns ago",
         tokens: 1450,
         title: "summary · turns 21–40",
-        body: "Explored auto-summarize cadence. Settled on every 20 turns, keep 2 most recent summaries.",
+        body: "Defined the draw_shape tool (rectangle/ellipse/arrow/text). Decided to accumulate tool_call_delta partial-JSON and parse only on stop, never per-delta.",
       },
       {
         id: "t10",
@@ -36,7 +36,7 @@ export const initialThreads: Thread[] = [
         age: "11 turns ago",
         tokens: 220,
         title: "user · 11 turns ago",
-        body: "Can we make the Soft zone feel more spatial — less like a queue, more like a working table?",
+        body: "Can the panel render text_delta incrementally instead of waiting for the whole reply? It feels laggy as one blob.",
       },
       {
         id: "t11",
@@ -45,7 +45,7 @@ export const initialThreads: Thread[] = [
         age: "10 turns ago",
         tokens: 1340,
         title: "model · 10 turns ago",
-        body: "Three sketches: stratigraphy, cards-on-board, garden. Each treats Soft differently — sediment, surface, growth.",
+        body: "Yes — replaced send() in CopilotPanel.tsx with an SSE reader. Each data: frame switches on event type; text_delta appends to the in-flight assistant bubble via a ref.",
       },
       {
         id: "t12",
@@ -54,7 +54,7 @@ export const initialThreads: Thread[] = [
         age: "6 turns ago",
         tokens: 90,
         title: "user · 6 turns ago",
-        body: "Garden is interesting. What does pruning look like?",
+        body: "And the draw_shape calls — they land on the Excalidraw canvas directly?",
       },
       {
         id: "t13",
@@ -63,15 +63,15 @@ export const initialThreads: Thread[] = [
         age: "5 turns ago",
         tokens: 980,
         title: "model · 5 turns ago",
-        body: "Pruning = drop or summarize. Old leaves yellow first; the gardener can fossilize a leaf into Fixed when it earns its keep.",
+        body: "On a draw_shape tool_call we call useCanvas().addElement({ type: kind, x, y, label }). The mutation fires once, after stop, so the element never lands with truncated args.",
       },
       {
         id: "tool1",
         kind: "tool",
         age: "3 turns ago",
         tokens: 540,
-        title: "tool · read_file design-system/tokens.css",
-        body: "(540 tokens of CSS variables — colors, type scale, spacing.)",
+        title: "tool · read_file lib/ai.ts",
+        body: "(540 tokens — createClient({ provider: 'anthropic', model: 'claude-sonnet-4-6' }); usage tracked on every stream via ai.usage.)",
       },
       {
         id: "t14",
@@ -80,7 +80,7 @@ export const initialThreads: Thread[] = [
         age: "2 turns ago",
         tokens: 60,
         title: "user · 2 turns ago",
-        body: "Try a hero with a darker, moodier palette next.",
+        body: "Make sure the final draw_shape args aren't dropped when the model stops — that bit me last time.",
       },
     ],
     task: {
@@ -90,9 +90,9 @@ export const initialThreads: Thread[] = [
       age: "now",
       tokens: 320,
       title: "current task",
-      body: "Render a darker hero variation. Compare against the warm one. Keep within design-system tokens.",
+      body: "Stream draw_shape tool calls into the canvas. Accumulate tool_call_delta and parse on stop so the last label is never dropped.",
     },
-    composer: "Compose a darker hero with the gold accent at 60% opacity. Reuse the existing type ramp.",
+    composer: "Add a test for a delta+stop arriving in the same flush; assert draw_shape args parse complete.",
     turn: 47,
     fixedBudget: 35,
     softKeep: 8,
@@ -100,7 +100,7 @@ export const initialThreads: Thread[] = [
   },
   {
     id: "ops",
-    name: "ops",
+    name: "deploy",
     glyph: "◆",
     lastActive: "1h ago",
     status: "idle",
@@ -113,8 +113,8 @@ export const initialThreads: Thread[] = [
         kind: "summary",
         age: "12 turns ago",
         tokens: 980,
-        title: "summary · queue migration plan",
-        body: "Settled on dual-write for 7 days then cut over. Rollback is single config flip.",
+        title: "summary · edge runtime migration",
+        body: "Moved app/api/copilot/route.ts to the Vercel edge runtime so SSE streams start sooner. Rate-limit by user id at the edge; rollback is a single runtime export flip.",
       },
       {
         id: "ot1",
@@ -123,7 +123,7 @@ export const initialThreads: Thread[] = [
         age: "4 turns ago",
         tokens: 84,
         title: "user · 4 turns ago",
-        body: "What's our current p99 on the checkout flow?",
+        body: "What's our current p99 on the copilot streaming route?",
       },
       {
         id: "ot2",
@@ -132,14 +132,14 @@ export const initialThreads: Thread[] = [
         age: "3 turns ago",
         tokens: 410,
         title: "model · 3 turns ago",
-        body: "640ms over the last 24h. Spike at 14:00 to 1.1s coincided with the marketing email blast.",
+        body: "Time-to-first-token p99 is 640ms over the last 24h. A spike to 1.1s at 14:00 lined up with a batch of long draw_shape tool calls fanning out.",
       },
       {
         id: "otool1",
         kind: "tool",
         age: "2 turns ago",
         tokens: 280,
-        title: "tool · prom_query rate(checkout_p99)",
+        title: "tool · prom_query rate(copilot_ttft_p99)",
         body: "(280 tokens — see attached metric series.)",
       },
     ],
@@ -150,7 +150,7 @@ export const initialThreads: Thread[] = [
       age: "now",
       tokens: 180,
       title: "current task",
-      body: "Plan the cutover window for the checkout queue migration.",
+      body: "Add per-user rate limiting to the edge copilot route without regressing streaming time-to-first-token.",
     },
     composer: "",
     turn: 16,
@@ -160,11 +160,11 @@ export const initialThreads: Thread[] = [
   },
   {
     id: "backend",
-    name: "backend",
+    name: "persistence",
     glyph: "◆",
     lastActive: "yesterday",
     status: "idle",
-    branches: ["main", "queue-redesign"],
+    branches: ["main", "canvas-autosave"],
     activeBranch: "main",
     fixed: ["api-schema", "core-architecture"],
     soft: [
@@ -173,8 +173,8 @@ export const initialThreads: Thread[] = [
         kind: "summary",
         age: "30 turns ago",
         tokens: 1100,
-        title: "summary · queue redesign",
-        body: "Two designs on the table: SQS-only and Kafka. Kafka wins on replay; SQS wins on operational cost.",
+        title: "summary · auth + canvas autosave",
+        body: "/api/auth/login issues an HMAC-signed httpOnly cookie verified by lib/auth/session.ts. /api/canvas/[id] does optimistic autosave keyed on the store's monotonic version counter.",
       },
       {
         id: "bt1",
@@ -183,7 +183,7 @@ export const initialThreads: Thread[] = [
         age: "9 turns ago",
         tokens: 110,
         title: "user · 9 turns ago",
-        body: "Show me what the consumer interface looks like for the Kafka version.",
+        body: "On reconnect with stale local edits the client shouldn't just lose them — what does the conflict path return?",
       },
       {
         id: "bt2",
@@ -192,7 +192,7 @@ export const initialThreads: Thread[] = [
         age: "8 turns ago",
         tokens: 1620,
         title: "model · 8 turns ago",
-        body: "Consumer interface sketch with at-least-once semantics, idempotency keys, and a poison-pill DLQ. Parallelism via partition affinity.",
+        body: "If baseVersion < stored.version the PUT returns 409 with the full server scene and version. The client merges last-writer-wins per element id, server base, instead of overwriting. Storage stays behind a saveScene/loadScene adapter.",
       },
     ],
     task: {
@@ -202,7 +202,7 @@ export const initialThreads: Thread[] = [
       age: "now",
       tokens: 140,
       title: "current task",
-      body: "Decide between Kafka and SQS by Friday. Draft the comparison memo.",
+      body: "Wire the client reconnect loop: call mergeScenes on a 409, then re-PUT with the new baseVersion.",
     },
     composer: "",
     turn: 24,
@@ -212,7 +212,7 @@ export const initialThreads: Thread[] = [
   },
   {
     id: "research",
-    name: "research",
+    name: "providers",
     glyph: "◆",
     lastActive: "3d ago",
     status: "archived",
@@ -225,8 +225,8 @@ export const initialThreads: Thread[] = [
         kind: "summary",
         age: "60 turns ago",
         tokens: 2200,
-        title: "summary · 8 user interviews",
-        body: "Recurring pain: context loss between sessions, no way to preview what the model will see, no per-thread tone.",
+        title: "summary · pi-ai provider survey",
+        body: "Compared anthropic / openai / google behind pi-ai's createClient. Event shape (text_delta/tool_call/tool_call_delta/stop) is identical across providers; only tool-call finalize ordering differs.",
       },
       {
         id: "rt1",
@@ -235,7 +235,7 @@ export const initialThreads: Thread[] = [
         age: "5 turns ago",
         tokens: 70,
         title: "user · 5 turns ago",
-        body: "What was the strongest signal across interviews?",
+        body: "What's the strongest reason to keep the provider behind lib/ai.ts?",
       },
       {
         id: "rt2",
@@ -244,7 +244,7 @@ export const initialThreads: Thread[] = [
         age: "4 turns ago",
         tokens: 720,
         title: "model · 4 turns ago",
-        body: "Six of eight participants independently sketched a two-pane mental model. Three drew gauges.",
+        body: "Cost. ai.usage gives a per-stream cost meter, and serializeContext/hydrateContext let us hand a live thread from anthropic to openai mid-session without rebuilding it.",
       },
     ],
     task: {
@@ -254,7 +254,7 @@ export const initialThreads: Thread[] = [
       age: "now",
       tokens: 120,
       title: "current task",
-      body: "Synthesize findings into 5 design principles.",
+      body: "Write up a provider cost + handoff note: when to switch provider on the copilot route and what serializeContext preserves.",
     },
     composer: "",
     turn: 12,

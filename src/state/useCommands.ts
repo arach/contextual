@@ -6,10 +6,12 @@ import type { CommandOption } from "hudsonkit/overlays";
 import type { ThreadStore } from "@/state/useThreadStore";
 
 export interface ShellActions {
-  toggleLeft: () => void;
-  toggleRight: () => void;
+  /** Omit when Hudson AppShell owns panel collapse (avoids duplicate palette ids). */
+  toggleLeft?: () => void;
+  toggleRight?: () => void;
   openDesigner: () => void;
   openSession: () => void;
+  openAnalysis: () => void;
   openTree: () => void;
 }
 
@@ -17,27 +19,27 @@ export function useCommands(store: ThreadStore, shell: ShellActions): CommandOpt
   return useMemo<CommandOption[]>(() => {
     const cmds: CommandOption[] = [];
 
-    // --- thread switching ---
+    // --- run switching ---
     for (const t of store.threads) {
       cmds.push({
         id: `thread:${t.id}`,
-        label: `Switch to ${t.name}`,
+        label: `Open ${t.name} run`,
         shortcut: t.id === store.activeId ? "active" : undefined,
         action: () => store.select(t.id),
       });
     }
 
-    // --- thread actions ---
+    // --- run actions ---
     cmds.push(
       {
         id: "thread:branch",
-        label: "Branch this thread",
+        label: "Fork current run",
         shortcut: "⌘B",
         action: store.branch,
       },
       {
         id: "thread:archive",
-        label: "Archive this thread",
+        label: "Archive current run",
         action: () => alert("(proto) archive not wired"),
       },
       {
@@ -57,29 +59,38 @@ export function useCommands(store: ThreadStore, shell: ShellActions): CommandOpt
       });
     }
 
-    // --- shell ---
-    cmds.push(
-      {
+    // --- shell (panel toggles only when not provided by Hudson AppShell) ---
+    if (shell.toggleLeft) {
+      cmds.push({
         id: "shell:toggle-left",
-        label: "Toggle threads panel",
+        label: "Toggle runs panel",
         shortcut: "⌘[",
         action: shell.toggleLeft,
-      },
-      {
+      });
+    }
+    if (shell.toggleRight) {
+      cmds.push({
         id: "shell:toggle-right",
         label: "Toggle context rack",
         shortcut: "⌘]",
         action: shell.toggleRight,
-      },
+      });
+    }
+    cmds.push(
       {
         id: "shell:open-session",
-        label: "Open Session view",
+        label: "Open Instantiate runtime",
         action: shell.openSession,
       },
       {
         id: "shell:open-designer",
-        label: "Open Designer view",
+        label: "Open Package studio",
         action: shell.openDesigner,
+      },
+      {
+        id: "shell:open-analysis",
+        label: "Open Explore studio",
+        action: shell.openAnalysis,
       },
       {
         id: "shell:open-tree",

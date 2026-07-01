@@ -21,7 +21,7 @@ export function PackageList({ packages, activeId, onSelect }: PackageListProps) 
             className={
               "block w-full text-left px-3 py-2.5 mb-1 rounded-[2px] border transition-colors " +
               (active
-                ? "hg-reticle bg-[rgba(255,123,44,0.08)] border-[var(--hg-accent)]"
+                ? "hg-reticle bg-[var(--ctx-accent-tint)] border-[var(--hg-accent)]"
                 : "border-transparent hover:bg-[var(--hg-bg-tint)]")
             }
           >

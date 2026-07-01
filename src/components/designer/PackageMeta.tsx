@@ -61,7 +61,7 @@ export function PackageMeta({ pkg, modules }: PackageMetaProps) {
         </div>
       </div>
 
-      <button className="hg-btn primary w-full justify-center mt-3">publish v0.5 ↑</button>
+      <button className="hg-btn primary w-full justify-center mt-3">publish package v0.5 ↑</button>
     </div>
   );
 }

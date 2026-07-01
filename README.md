@@ -1,61 +1,159 @@
 # Contextual
 
-A deliberately *designed* context environment for agentic engineering. Decouples conversation threads from LLM context management: every dispatch is composed fresh from a Fixed zone (pinned-every-call modules) and a Soft zone (recent turns + summaries). Statelessness is a feature.
+Contextual is a context planning workbench for agentic engineering. It reads prior agent
+sessions, turns them into inspectable context atoms, helps package durable context, and
+prepares honest launch or fork plans for future runs.
 
-## Backends
+It is deliberately upstream of the model provider's hidden context window. Providers and
+harnesses own their own caching, compression, memory, and reconstruction. Contextual owns
+the durable boundary: what was observed, what was selected, what was packaged, and what a
+new run is allowed to claim as lineage.
 
-Contextual is vendor-neutral. Two backends ship today:
+## What You Can Do
 
-- **pi-coding-agent** — spawns the `pi` CLI (`@earendil-works/pi-coding-agent`) per dispatch. Native session tree, fork, and on-disk workspace materialization. Pick this when you want pi's rich session ergonomics.
-- **pi-ai** — in-process via `@earendil-works/pi-ai`. Stateless; every call rebuilds the full Context from Contextual's Fixed/Soft state. Multiple providers (Anthropic, OpenAI, Google, Mistral, Bedrock). Pick this when you want pure context control.
+| Surface | Job | Status |
+| --- | --- | --- |
+| Explore | Inspect native transcripts, turn-ready manifests, Contextual atoms, buckets, and stale context | primary app surface |
+| Package | Distill reusable context into versioned artifacts with provenance and freshness rules | prototype-backed |
+| Instantiate | Compile packages and recipes into a target-specific launch plan | in progress |
+| Fork | Derive a new run from explicit prior state without pretending hidden state continued | in progress |
+| Studio | Browse the engineering docs and interactive design prototypes behind those surfaces | active design lab |
 
-Toggle per-thread via the backend chip in the top bar.
+The shortest version: Contextual answers "what should the next agent start with, and why
+is that claim true?"
 
-## Setup
+## Quickstart
 
-Install dependencies (bun is required):
+You can run the full app with a bundled demo corpus and no API keys:
 
 ```bash
+git clone https://github.com/arach/contextual
+cd contextual
+bun run setup
 bun install
+CONTEXTUAL_DEMO=1 bun dev
 ```
 
-For the **pi-coding-agent** backend, install pi globally:
+Open `http://localhost:5180`.
 
-```bash
-npm install -g @earendil-works/pi-coding-agent
-pi login   # OAuth or API key, your choice
-```
+Demo mode is self-contained. It includes real captured sessions for comparison work, so
+Explore, Package, Instantiate, Fork, and the guided walkthrough have useful data on first
+load.
 
-For the **pi-ai** backend, you'll need an `ANTHROPIC_API_KEY` (or the corresponding key for whichever provider you select). Storage is handled by the `secret` CLI on this machine — never in a `.env` file:
+## Use Your Own Sessions
 
-```bash
-secret set ANTHROPIC_API_KEY     # prompts for the value
-```
-
-## Run
-
-Start the dev server with the credential injected into the child env:
-
-```bash
-secret run ANTHROPIC_API_KEY -- bun dev
-```
-
-For pi-coding-agent only:
+For local sessions, run:
 
 ```bash
 bun dev
 ```
 
-Open `http://localhost:5173`.
+Contextual scans agent transcripts from `~/.claude` and `~/.codex`. If the catalog is
+empty or you want one specific file, paste an absolute transcript path into the empty
+Explore state and import it directly.
 
-## Architecture
+Useful session-analysis routes:
 
-- `src/lib/backends/types.ts` — Backend interface, DispatchRequest, DispatchResult
-- `src/lib/backends/pi-coding-agent.ts` — pi CLI backend (subprocess, native sessions)
-- `src/lib/backends/pi-ai.ts` — pi-ai backend (in-process, stateless)
-- `src/lib/backends/client.ts` — browser-side fetch client
-- `vite-plugin-backends.ts` — dev-server router that dispatches to the right backend
+| Route | Purpose |
+| --- | --- |
+| `GET /api/session-analysis` | analyzed sessions |
+| `GET /api/session-analysis?demo=1` | bundled demo corpus |
+| `GET /api/session-analysis/catalog` | discovered local transcripts |
+| `POST /api/session-analysis/pull` | analyze a specific transcript path |
 
-Contextual owns the canonical branch/tree manifest. pi-coding-agent dispatches mirror to native pi sessions at `~/.contextual/sessions/`; pi-ai dispatches are stateless and have no on-disk footprint.
+## Studio
 
-See `docs/CTX-001-pi-ai-backend.md` for the design rationale.
+The Studio route is the project's design and architecture workspace:
+
+```text
+/studio
+/studio/package-view
+/studio/session-observe
+/studio/replay
+```
+
+Highlights:
+
+- `/studio` renders the CTX presentations and active engineering notes.
+- `/studio/package-view` explores an IDE-like context package surface.
+- `/studio/session-observe` shows one session as a turn-by-turn accumulation instrument.
+- `/studio/replay` compares multiple harness lanes for the same scenario in lockstep.
+
+Studio prototypes fetch real demo analysis from `/api/session-analysis?demo=1`; they are
+views over existing data, not separate capture systems.
+
+## Local Workspace
+
+Contextual expects two sibling repositories:
+
+- `../hudson`, for `hudsonkit` AppShell chrome and styling.
+- `../studio`, for the shared Studio shell and document primitives.
+
+`bun run setup` is idempotent. It clones or prepares those sibling workspaces when they
+are missing, then ensures `hudsonkit` styles are available.
+
+Common commands:
+
+```bash
+bun run setup        # prepare sibling workspace dependencies
+bun install          # install packages
+bun dev              # Next AppShell host on http://localhost:5180
+CONTEXTUAL_DEMO=1 bun dev
+bun run dev:vite     # legacy Vite prototype host
+bun run typecheck
+bun run build
+```
+
+Environment variables are documented in [`.env.example`](.env.example). Demo mode does
+not require any of them.
+
+## Backends
+
+Contextual is vendor-neutral. Two live-dispatch backends exist today:
+
+- `pi-coding-agent`: spawns the `pi` CLI per dispatch. Use it when you want pi's native
+  session tree, fork support, and on-disk workspace materialization.
+- `pi-ai`: runs in process through `@earendil-works/pi-ai`. Use it when you want each
+  request rebuilt from Contextual's explicit Fixed and Soft state.
+
+For `pi-coding-agent`:
+
+```bash
+npm install -g @earendil-works/pi-coding-agent
+pi login
+```
+
+For `pi-ai`, either use provider OAuth where available or inject an API key through your
+local secret manager, for example:
+
+```bash
+secret set ANTHROPIC_API_KEY
+secret run ANTHROPIC_API_KEY -- bun dev
+```
+
+## Project Map
+
+| Path | Purpose |
+| --- | --- |
+| `src/server/session-analysis/*` | transcript readers, atom extraction, bucket classification, recipe drafts |
+| `src/server/harnesses/*` | harness-neutral catalog, at-rest records, turns, and manifests |
+| `src/lib/harnessContract.ts` | shared REST and TypeScript contract for harness exploration |
+| `src/components/analysis/*` | Explore workbench |
+| `src/contextualApp/*` | Hudson AppShell integration and product state |
+| `src/studio/*` | Studio docs, registry, and prototypes |
+| `src/lib/backends/*` | live backend dispatch paths and pi integration |
+| `docs/` | active engineering notes, contracts, and design specs |
+| `context-data/` | reusable seed context and captured demo material |
+
+## Design Principles
+
+- Source truth first: native logs, manifests, docs, and sidecars remain the evidence.
+- Interpretation second: atoms, buckets, slices, and packages are Contextual's model.
+- Lineage must be explicit: native forks, replay forks, recipe-derived launches, and
+  manual starts are different claims.
+- Plans should be auditable before execution.
+- If the product cannot prove a continuity claim, it should not imply one.
+
+Start with [docs/INDEX.md](docs/INDEX.md) and
+[docs/ENG-contextual-platform.md](docs/ENG-contextual-platform.md) for the current
+engineering direction.

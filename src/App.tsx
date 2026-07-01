@@ -1,17 +1,10 @@
-// Top-level composition for Contextual. Uses Hudson's Frame in panel mode so
-// the three columns sit as a static layout (no pan/zoom), then layers
-// Hangar-specific chrome on top:
-//   - ClassificationBand (the orange sliver)
-//   - NavigationBar (top)
-//   - SidePanel left (threads)
-//   - SidePanel right (context rack)
-//   - StatusBar (bottom)
-//   - Center column with conversation + composer
+// Top-level composition for Contextual v2. Hudson Frame in panel mode with
+// Scout-aligned chrome — embed-ready via ContextualAppShell.
 //
 // All thread state lives in useThreadStore; the LLM call is a no-op stub
 // here since this prototype doesn't ship with a real backend.
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Frame } from "hudsonkit/chrome";
 import { usePersistentState } from "hudsonkit";
@@ -22,7 +15,6 @@ import { buildManifest } from "@/lib/derive";
 import { tokFor } from "@/lib/tokens";
 import { dispatch as dispatchBackend, branch as branchBackend } from "@/lib/backends/client";
 
-import { ClassificationBand } from "@/components/chrome/ClassificationBand";
 import { CommandPaletteHost } from "@/components/chrome/CommandPaletteHost";
 import { TopBar } from "@/components/chrome/TopBar";
 import { BottomStatusBar } from "@/components/chrome/BottomStatusBar";
@@ -31,6 +23,11 @@ import { ContextRack } from "@/components/rack/ContextRack";
 import { ConversationArea } from "@/components/ConversationArea";
 import { DesignerChrome, DesignerWorkbench, useDesignerState } from "@/components/designer/Designer";
 import { SessionTree } from "@/components/tree/SessionTree";
+import {
+  AnalysisChrome,
+  SessionAnalysisWorkbench,
+  useSessionAnalysisState,
+} from "@/components/analysis/SessionAnalysis";
 
 // Default + clamp bounds for the resizable side panels. The center column
 // reads the live width back through inset on every render, so dragging the
@@ -43,7 +40,7 @@ const RIGHT_MIN = 320;
 const RIGHT_MAX = 720;
 const PANEL_W_COLLAPSED = 60;
 
-export type AppMode = "session" | "designer";
+export type AppMode = import("@/contextualApp/modes").AppMode;
 
 export function App() {
   const store = useThreadStore();
@@ -96,12 +93,22 @@ export function App() {
     toggleRight: () => setRightCollapsed((c) => !c),
     openDesigner: () => setMode("designer"),
     openSession: () => setMode("session"),
+    openAnalysis: () => setMode("analysis"),
     openTree: () => setTreeOpen(true),
   });
 
   // Designer state is owned at this level so both DesignerChrome (in the HUD
   // slot) and DesignerWorkbench (in the center column) see the same package.
   const designer = useDesignerState();
+  const analysis = useSessionAnalysisState();
+  const lastAnalysisSessionRef = useRef("");
+
+  useEffect(() => {
+    if (mode !== "analysis" || !analysis.activeId) return;
+    if (analysis.activeId === lastAnalysisSessionRef.current) return;
+    lastAnalysisSessionRef.current = analysis.activeId;
+    setLeftCollapsed(true);
+  }, [mode, analysis.activeId, setLeftCollapsed]);
 
   const manifest = useMemo(() => buildManifest(store.active), [store.active]);
   const composerTokens = tokFor(store.active.composer);
@@ -159,9 +166,7 @@ export function App() {
       onPan={() => {}}
       onZoom={() => {}}
       hud={
-        <div className="hg-shell">
-          <ClassificationBand />
-          <div className="hg-grid-overlay" />
+        <div className="hg-shell ctx-shell">
           <CommandPaletteHost commands={commands} />
           <SessionTree isOpen={treeOpen} onClose={() => setTreeOpen(false)} />
           <TopBar
@@ -185,7 +190,7 @@ export function App() {
                 onToggleCollapse={() => setLeftCollapsed((c) => !c)}
                 onSelect={store.select}
                 onSelectBranch={store.setActiveBranch}
-                onBranch={store.branch}
+                onBranch={branchAndFork}
               />
               <ContextRack
                 thread={store.active}
@@ -201,9 +206,21 @@ export function App() {
                 onDrop={store.drop}
               />
             </>
-          ) : (
+          ) : mode === "designer" ? (
             <DesignerChrome
               state={designer}
+              leftWidth={leftWidth}
+              rightWidth={rightWidth}
+              leftCollapsed={leftCollapsed}
+              rightCollapsed={rightCollapsed}
+              onToggleLeft={() => setLeftCollapsed((c) => !c)}
+              onToggleRight={() => setRightCollapsed((c) => !c)}
+              onResizeLeft={onResize("left")}
+              onResizeRight={onResize("right")}
+            />
+          ) : (
+            <AnalysisChrome
+              state={analysis}
               leftWidth={leftWidth}
               rightWidth={rightWidth}
               leftCollapsed={leftCollapsed}
@@ -229,10 +246,9 @@ export function App() {
           live SidePanel widths so the column reflows when panels collapse or
           when the resizer is dragged. */}
       <div
-        className="absolute inset-0 flex flex-col"
+        className="absolute inset-0 flex min-h-0 flex-col"
         style={{
-          // nav 48 + classification 18 = 66 top, status bar 28 bottom.
-          top: 66,
+          top: 48,
           bottom: 28,
           left: liveLeftW,
           right: liveRightW,
@@ -247,11 +263,11 @@ export function App() {
             inFlightTokens={callTokens}
             onComposerChange={store.setComposer}
             onDispatch={dispatch}
-            onBranch={branchAndFork}
-            onOpenTree={() => setTreeOpen(true)}
           />
-        ) : (
+        ) : mode === "designer" ? (
           <DesignerWorkbench state={designer} />
+        ) : (
+          <SessionAnalysisWorkbench state={analysis} />
         )}
       </div>
     </Frame>

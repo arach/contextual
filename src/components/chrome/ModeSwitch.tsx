@@ -1,28 +1,25 @@
-// Pill toggle in the top bar. Session = chat-driven runtime; Designer = the
-// workbench for crafting Fixed packages.
-
-import type { AppMode } from "@/App";
+import type { AppMode } from "@/contextualApp/modes";
+import { APP_MODES } from "@/contextualApp/modes";
 
 interface ModeSwitchProps {
   mode: AppMode;
   onChange: (m: AppMode) => void;
 }
 
+/** @deprecated Use `@/contextualApp/ModeSwitch` */
 export function ModeSwitch({ mode, onChange }: ModeSwitchProps) {
   return (
-    <div className="inline-flex items-center gap-0 p-[2px] rounded-[2px] bg-[var(--hg-bg-tint)] border border-[var(--hg-line)]">
-      {(["session", "designer"] as const).map((m) => (
+    <div className="ctx-nav-tabs" role="tablist" aria-label="Contextual mode">
+      {APP_MODES.map(({ id, label }) => (
         <button
-          key={m}
-          onClick={() => onChange(m)}
-          className={
-            "hg-mono text-[10.5px] tracking-[0.12em] uppercase px-3 py-1 rounded-[2px] transition-colors " +
-            (mode === m
-              ? "bg-[var(--hg-accent)] text-[var(--hg-bg)]"
-              : "bg-transparent text-[var(--hg-muted)] hover:text-[var(--hg-ink)]")
-          }
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={mode === id}
+          onClick={() => onChange(id)}
+          className={"ctx-nav-tab" + (mode === id ? " active" : "")}
         >
-          {m}
+          {label}
         </button>
       ))}
     </div>

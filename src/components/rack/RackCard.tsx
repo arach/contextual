@@ -38,9 +38,7 @@ export function RackCard({
       onClick={onExpand}
       className={
         "relative cursor-pointer py-2 pl-3 pr-2 border-b border-[var(--hg-hairline)] transition-colors " +
-        (expanded
-          ? "bg-[rgba(255,123,44,0.04)] hg-reticle "
-          : "hover:bg-[var(--hg-surface)] ") +
+        (expanded ? "bg-[var(--hg-bg-tint)] " : "hover:bg-[var(--hg-surface)] ") +
         zoneStyles(item.source, view.kind) +
         (evicted ? " opacity-40" : "")
       }
@@ -48,7 +46,7 @@ export function RackCard({
         evicted
           ? {
               backgroundImage:
-                "repeating-linear-gradient(45deg, transparent 0 6px, rgba(184,89,58,0.08) 6px 8px)",
+                "repeating-linear-gradient(45deg, transparent 0 6px, rgba(115,115,115,0.06) 6px 8px)",
               borderStyle: "dashed",
             }
           : undefined
@@ -107,10 +105,9 @@ export function RackCard({
 }
 
 function zoneStyles(source: RackItem["source"], _kind: string): string {
-  if (source === "fixed") return "border-l-2 border-l-[var(--hg-accent)] ";
-  if (source === "task")
-    return "border-l-2 border-l-[var(--hg-accent-deep)] bg-[rgba(255,123,44,0.06)] ";
-  return "border-l-2 border-l-transparent ";
+  if (source === "fixed") return "border-l border-l-[var(--ctx-accent-deep)] ";
+  if (source === "task") return "border-l border-l-[var(--ctx-accent)] bg-[var(--hg-bg-tint)]/50 ";
+  return "border-l border-l-transparent ";
 }
 
 interface View {
@@ -150,24 +147,20 @@ function KindChip({ kind, children }: { kind: string; children: ReactNode }) {
 }
 
 function chipPalette(kind: string): { background: string; color: string } {
+  const muted = {
+    background: "color-mix(in srgb, var(--ctx-muted) 28%, transparent)",
+    color: "var(--ctx-ink-3)",
+  };
   switch (kind) {
-    case "summary":
-      return { background: "var(--hg-accent-deep)", color: "var(--hg-bg)" };
-    case "tool":
-      return { background: "#6a7a8a", color: "var(--hg-bg)" };
     case "task":
-      return { background: "var(--hg-accent)", color: "var(--hg-bg)" };
+      return {
+        background: "var(--ctx-accent-tint)",
+        color: "var(--ctx-accent)",
+      };
     case "user":
-      return { background: "var(--hg-ink)", color: "var(--hg-bg)" };
     case "model":
-      return { background: "var(--hg-ink-2)", color: "var(--hg-bg)" };
-    case "doc":
-      return { background: "#5a7a5a", color: "var(--hg-bg)" };
-    case "rules":
-      return { background: "#7a5a7a", color: "var(--hg-ink)" };
-    case "log":
-      return { background: "#8a6a3a", color: "var(--hg-bg)" };
+      return muted;
     default:
-      return { background: "var(--hg-ink-2)", color: "var(--hg-bg)" };
+      return muted;
   }
 }
