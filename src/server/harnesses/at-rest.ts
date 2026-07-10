@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 
 import type {
   AtRestLine,
@@ -124,6 +125,7 @@ export async function readJsonlAtRest(
   const fromLine = Math.max(1, Math.floor(Number(opts.fromLine ?? 1)));
   const limit = clampJsonlLimit(opts.limit);
   const includeRaw = Boolean(opts.includeRaw);
+  const includeFile = Boolean(opts.includeFile);
   const raw = await readFile(session.path, "utf8");
   const physicalLines = raw.split(/\r?\n/);
   const totalLines = physicalLines.reduce((count, line) => count + (line.trim() ? 1 : 0), 0);
@@ -167,7 +169,27 @@ export async function readJsonlAtRest(
   }
 
   const nextFromLine = emittedAfterPage && lines.length ? (lines[lines.length - 1]?.line ?? fromLine) + 1 : null;
-  return { session, fromLine, limit, totalLines, nextFromLine, lines };
+
+  // The genuine original file, untouched — served on request so the viewer can
+  // show the real `.jsonl` alongside our per-line breakdown. Capped for safety.
+  const FILE_CONTENT_CAP = 2_000_000;
+  const fileBuffer = Buffer.from(raw, "utf8");
+  const totalBytes = fileBuffer.byteLength;
+  const truncated = totalBytes > FILE_CONTENT_CAP;
+  const content = truncated
+    ? new StringDecoder("utf8").write(fileBuffer.subarray(0, FILE_CONTENT_CAP))
+    : raw;
+  const file = includeFile
+    ? {
+        path: session.path,
+        name: basename(session.path),
+        bytes: totalBytes,
+        content,
+        truncated,
+      }
+    : undefined;
+
+  return { session, fromLine, limit, totalLines, nextFromLine, lines, file };
 }
 
 function parseJsonLine(line: string): unknown {
@@ -198,6 +220,14 @@ export function recordTypeFor(harness: HarnessId, native: unknown): string {
   if (harness === "codex") {
     const payload = rec.payload as Record<string, unknown> | undefined;
     if (typeof payload?.type === "string") return payload.type;
+  }
+  if (harness === "grok") {
+    // Grok speaks JSON-RPC: the semantic type is nested in the update payload
+    // (e.g. tool_call, agent_message_chunk), with the RPC method as a fallback.
+    const params = rec.params as Record<string, unknown> | undefined;
+    const update = params?.update as Record<string, unknown> | undefined;
+    if (typeof update?.sessionUpdate === "string") return update.sessionUpdate;
+    if (typeof rec.method === "string") return rec.method;
   }
   return "unknown";
 }

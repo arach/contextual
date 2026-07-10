@@ -15,6 +15,7 @@ export async function GET(request: Request, context: RouteContext) {
         fromLine: Number(url.searchParams.get("fromLine") ?? 1),
         limit: Number(url.searchParams.get("limit") ?? 200),
         includeRaw: url.searchParams.get("includeRaw") === "true",
+        includeFile: url.searchParams.get("includeFile") === "true",
       }),
     );
   } catch (error) {

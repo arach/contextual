@@ -73,6 +73,16 @@ export interface AtRestLine {
   source: SourceRef;
 }
 
+/** The genuine original transcript file on disk — untouched bytes, real name. */
+export interface AtRestFile {
+  path: string;
+  name: string;
+  bytes: number;
+  content: string;
+  /** True if `content` was capped (very large file); the rest is on disk. */
+  truncated: boolean;
+}
+
 export interface AtRestReadResponse {
   session: HarnessSessionRef;
   fromLine: number;
@@ -80,6 +90,7 @@ export interface AtRestReadResponse {
   totalLines: number;
   nextFromLine: number | null;
   lines: AtRestLine[];
+  file?: AtRestFile;
 }
 
 export interface SidecarFile {
@@ -200,11 +211,15 @@ export const HARNESS_API = {
   catalog: "/api/harnesses/catalog",
   session: (key: HarnessSessionKey) =>
     `/api/harnesses/sessions/${encodeURIComponent(key)}`,
-  atRest: (key: HarnessSessionKey, opts?: { fromLine?: number; limit?: number; includeRaw?: boolean }) => {
+  atRest: (
+    key: HarnessSessionKey,
+    opts?: { fromLine?: number; limit?: number; includeRaw?: boolean; includeFile?: boolean },
+  ) => {
     const params = new URLSearchParams();
     if (opts?.fromLine != null) params.set("fromLine", String(opts.fromLine));
     if (opts?.limit != null) params.set("limit", String(opts.limit));
     if (opts?.includeRaw) params.set("includeRaw", "true");
+    if (opts?.includeFile) params.set("includeFile", "true");
     const q = params.toString();
     return `/api/harnesses/sessions/${encodeURIComponent(key)}/at-rest${q ? `?${q}` : ""}`;
   },
@@ -254,7 +269,7 @@ export async function resolveHarnessSessionKey(sessionPath: string): Promise<Har
 
 export async function fetchHarnessAtRest(
   key: HarnessSessionKey,
-  opts?: { fromLine?: number; limit?: number; includeRaw?: boolean },
+  opts?: { fromLine?: number; limit?: number; includeRaw?: boolean; includeFile?: boolean },
 ): Promise<AtRestReadResponse> {
   return readJson<AtRestReadResponse>(HARNESS_API.atRest(key, opts));
 }

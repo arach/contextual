@@ -116,8 +116,8 @@ export function buildRawContextTree(session: SessionAnalysis): ContextTreeNode {
     children: [
       {
         id: "context:overview",
-        name: "session.md",
-        path: ["context", "session.md"],
+        name: "overview",
+        path: ["context", "overview"],
         kind: "overview",
         detail: session.summary,
       },
@@ -200,8 +200,8 @@ export function buildContextTree(session: SessionAnalysis, snapshot: ThresholdSn
     children: [
       {
         id: "context:overview",
-        name: "session.md",
-        path: ["context", "session.md"],
+        name: "overview",
+        path: ["context", "overview"],
         kind: "overview",
         detail: session.summary,
       },

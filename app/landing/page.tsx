@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
+import { ArrowRight, Github, Play } from "lucide-react";
 
 import { Quickstart } from "./Quickstart";
 import { ReplayImage } from "./ReplayImage";
 import "./landing.css";
 
 const GITHUB_URL = "https://github.com/arach/contextual";
+const APP_URL = "/";
 
 export const metadata: Metadata = {
-  title: "Contextual — Context engineering, made visible",
+  title: "Contextual — agent context workbench",
   description:
-    "A context planning workbench for agentic engineering. Contextual reads your agent sessions, turns every turn into inspectable context atoms, and shows how the window fills — so you design compact, durable context instead of accumulating noise.",
+    "Contextual reads prior agent sessions and shows how the context window fills up, turn by turn, so you can trim noise before the next run.",
 };
 
 interface Surface {
@@ -23,32 +25,45 @@ const SURFACES: Surface[] = [
   {
     index: "S-01",
     label: "Explore",
-    desc: "Inspect native transcripts as context atoms, buckets, and stale context.",
+    desc: "Read native transcripts, manifests, and Contextual atoms side by side.",
   },
   {
     index: "S-02",
     label: "Session Replay",
-    desc: "Play a session back turn by turn: watch the context window fill, and see what each turn added.",
+    desc: "Scrub a run turn by turn and see what each turn added.",
     feature: true,
   },
   {
     index: "S-03",
     label: "Package",
-    desc: "Distill reusable context into versioned artifacts with provenance and freshness rules.",
+    desc: "Distill reusable starting context with provenance and freshness rules.",
   },
   {
     index: "S-04",
     label: "Instantiate",
-    desc: "Compile packages into a target-specific launch plan.",
+    desc: "Compile packages into a target-specific launch plan before a run starts.",
   },
   {
     index: "S-05",
     label: "Fork",
-    desc: "Derive a new run from explicit prior state — without pretending hidden state continued.",
+    desc: "Start from explicit prior state, with no pretending the old hidden state carried over.",
   },
 ];
 
-const BOUNDARY = ["observed", "selected", "packaged", "claimed as lineage"];
+const PIPELINE = [
+  { label: "Transcript", desc: "what the harness actually wrote" },
+  { label: "Atom", desc: "one inspectable unit of context" },
+  { label: "Bucket", desc: "job, codebase, tools, verification, decisions" },
+  { label: "Package", desc: "versioned context with sources" },
+  { label: "Plan", desc: "launch or fork input the agent can audit" },
+];
+
+const HERO_PROOF = [
+  ["Reads", "~/.claude + ~/.codex"],
+  ["Models", "atoms, buckets, source refs"],
+  ["Shows", "turn-by-turn accumulation"],
+  ["Avoids", "hidden-state promises"],
+] as const;
 
 export default function LandingPage() {
   return (
@@ -62,7 +77,10 @@ export default function LandingPage() {
           </a>
           <div className="lp-nav-links">
             <a className="lp-nav-link" href="#quickstart">
-              Demo
+              Quickstart
+            </a>
+            <a className="lp-nav-link" href={APP_URL}>
+              App
             </a>
             <a
               className="lp-nav-link"
@@ -78,38 +96,43 @@ export default function LandingPage() {
 
       <main id="top">
         {/* ── Hero ──────────────────────────────────────────────────── */}
-        <section className="lp-hero">
+        <section className="lp-hero" aria-labelledby="landing-title">
+          <div className="lp-hero-media" aria-hidden="true">
+            <ReplayImage priority />
+          </div>
           <div className="lp-container lp-hero-inner">
-            <p className="lp-eyebrow">Context engineering, made visible</p>
-            <h1>See what fills your agent&rsquo;s context.</h1>
-            <p className="lp-hero-sub">
-              Contextual reads your agent sessions, turns every turn into inspectable{" "}
-              <strong>context atoms</strong>, and shows how the window fills — turn by turn,
-              bucket by bucket. So you design compact, durable context instead of accumulating
-              noise.
-            </p>
-            <div className="lp-hero-cta">
-              <a className="lp-btn lp-btn-primary" href="#quickstart">
-                Run the demo
-              </a>
-              <a className="lp-btn" href={GITHUB_URL} target="_blank" rel="noreferrer">
-                View on GitHub
-              </a>
+            <div className="lp-hero-copy">
+              <p className="lp-eyebrow">See what fills your agent&rsquo;s context</p>
+              <h1 id="landing-title">Contextual</h1>
+              <p className="lp-hero-sub">
+                Contextual reads your agent sessions and shows how the window fills up — turn by
+                turn, grouped by what it is for. Trim the noise before the next run instead of
+                discovering it afterward.
+              </p>
+              <div className="lp-hero-cta">
+                <a className="lp-btn lp-btn-primary" href="#quickstart">
+                  <Play size={14} aria-hidden />
+                  Run locally
+                </a>
+                <a className="lp-btn" href={APP_URL}>
+                  <ArrowRight size={14} aria-hidden />
+                  Open app
+                </a>
+                <a className="lp-btn" href={GITHUB_URL} target="_blank" rel="noreferrer">
+                  <Github size={14} aria-hidden />
+                  GitHub
+                </a>
+              </div>
             </div>
 
-            <figure className="lp-frame lp-hero-frame">
-              <figcaption className="lp-frame-bar">
-                <span className="lp-frame-dots" aria-hidden>
-                  <i />
-                  <i />
-                  <i />
-                </span>
-                <span className="lp-frame-label">
-                  session-observe · <span className="live">demo corpus</span>
-                </span>
-              </figcaption>
-              <ReplayImage priority />
-            </figure>
+            <dl className="lp-hero-proof" aria-label="Contextual capabilities">
+              {HERO_PROOF.map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
         </section>
 
@@ -118,21 +141,39 @@ export default function LandingPage() {
           <div className="lp-container lp-two">
             <div>
               <span className="lp-index">01 · Positioning</span>
-              <h2>Upstream of the hidden window.</h2>
+              <h2>Context you can actually read.</h2>
             </div>
             <div>
               <p className="lp-lede">
-                Providers and harnesses own caching, compression, and memory{" "}
-                <strong>inside</strong> the model&rsquo;s context window — and they hide it.
-                Contextual owns the durable boundary: what was observed, what was selected, what
-                was packaged, and what a new run may claim as lineage.
+                Agent sessions collect prompts, files, tool output, and back-and-forth. You can
+                usually read the transcript, but not the breakdown of what filled the working
+                window. Contextual reconstructs that from the session evidence so you can decide
+                what to keep.
               </p>
-              <div className="lp-boundary">
-                {BOUNDARY.map((b) => (
-                  <span key={b}>{b}</span>
-                ))}
-              </div>
             </div>
+          </div>
+        </section>
+
+        {/* ── Evidence pipeline ─────────────────────────────────────── */}
+        <section className="lp-section lp-pipeline-section">
+          <div className="lp-container">
+            <div className="lp-head">
+              <span className="lp-index">02 · Evidence model</span>
+              <h2>From raw turns to a launchable plan.</h2>
+              <p>
+                Contextual keeps each transformation visible, so a developer or agent can audit
+                where context came from before spending a new model turn.
+              </p>
+            </div>
+            <ol className="lp-pipeline" aria-label="Contextual evidence pipeline">
+              {PIPELINE.map((step, index) => (
+                <li key={step.label}>
+                  <span className="lp-pipeline-step">{String(index + 1).padStart(2, "0")}</span>
+                  <b>{step.label}</b>
+                  <p>{step.desc}</p>
+                </li>
+              ))}
+            </ol>
           </div>
         </section>
 
@@ -140,11 +181,11 @@ export default function LandingPage() {
         <section className="lp-section lp-surfaces-section">
           <div className="lp-container">
             <div className="lp-head">
-              <span className="lp-index">02 · Surfaces</span>
-              <h2>Five surfaces, one durable boundary.</h2>
+              <span className="lp-index">03 · Surfaces</span>
+              <h2>Five views of the same session.</h2>
               <p>
-                Each surface operates on the same context atoms — from first observation to the
-                launch plan for the next run.
+                Each surface works from the same transcript evidence, from first observation to the
+                package or launch plan for the next run.
               </p>
             </div>
             <div className="lp-surfaces">
@@ -169,14 +210,13 @@ export default function LandingPage() {
         <section className="lp-section lp-spotlight">
           <div className="lp-container lp-two">
             <div>
-              <span className="lp-index">03 · Session Replay</span>
+              <span className="lp-index">04 · Session Replay</span>
               <h2>Watch the window fill.</h2>
               <p className="lp-spotlight-body">
-                Most context isn&rsquo;t chosen — it accumulates. Session Replay puts the
-                conversation on one axis and the growing context window on the other, joined by a
-                single <strong>playhead</strong>. Scrub any turn to see exactly what it added, and
-                to which bucket. The point isn&rsquo;t the size — it&rsquo;s seeing where the
-                window goes, so your next run starts leaner.
+                Most context is not selected. It piles up. Session Replay puts the conversation on
+                one axis and the growing working window on the other, joined by a single{" "}
+                <strong>playhead</strong>. Scrub any turn to see what it added, which bucket it
+                landed in, and whether it belongs in the next run.
               </p>
               <div className="lp-axes">
                 <div className="lp-axis">
@@ -188,12 +228,12 @@ export default function LandingPage() {
                   <span>cumulative tokens, stacked by bucket</span>
                 </div>
                 <div className="lp-axis">
-                  <b>◆ playhead</b>
+                  <b>playhead</b>
                   <span>one cursor joins both — scrub to any turn</span>
                 </div>
               </div>
             </div>
-            <figure className="lp-frame">
+            <figure className="lp-frame lp-spotlight-frame">
               <figcaption className="lp-frame-bar">
                 <span className="lp-frame-dots" aria-hidden>
                   <i />
@@ -213,9 +253,12 @@ export default function LandingPage() {
         <section className="lp-section lp-closing">
           <div className="lp-container">
             <p>
-              What should the next agent start with — <span className="accent">and why is that
-              claim true?</span>
+              Design the context you hand off. <span className="accent">Do not inherit it.</span>
             </p>
+            <a className="lp-btn lp-btn-primary" href="#quickstart">
+              <Play size={14} aria-hidden />
+              Run locally
+            </a>
           </div>
         </section>
 
@@ -223,15 +266,14 @@ export default function LandingPage() {
         <section className="lp-section lp-quickstart" id="quickstart">
           <div className="lp-container lp-two">
             <div>
-              <span className="lp-index">04 · Quickstart</span>
+              <span className="lp-index">05 · Quickstart</span>
               <h2>Run it locally.</h2>
               <p className="lp-quickstart-note">
-                Clone, install, and boot the workbench against a bundled real demo corpus — no
-                keys, no setup.
+                Clone, install, and boot the workbench against bundled demo sessions. No accounts,
+                no API keys, no local transcript setup.
               </p>
               <p className="lp-caption">
-                Runs with a bundled real demo corpus. No API keys. Opens on{" "}
-                <code>http://localhost:5180</code>.
+                Starts the local Next app on <code>http://localhost:5180</code>.
               </p>
             </div>
             <div>
@@ -247,6 +289,9 @@ export default function LandingPage() {
           <p className="lp-footer-tag">
             <b>Contextual</b> — a context planning workbench for agentic engineering.
           </p>
+          <a className="lp-footer-link" href={APP_URL}>
+            open app
+          </a>
           <a className="lp-footer-link" href={GITHUB_URL} target="_blank" rel="noreferrer">
             github.com/arach/contextual ↗
           </a>

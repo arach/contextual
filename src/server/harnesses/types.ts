@@ -35,6 +35,7 @@ export interface AtRestReadOptions {
   fromLine?: number;
   limit?: number;
   includeRaw?: boolean;
+  includeFile?: boolean;
 }
 
 export interface SidecarOptions {

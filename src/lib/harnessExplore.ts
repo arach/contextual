@@ -7,6 +7,7 @@ import {
   fetchHarnessManifest,
   fetchHarnessTurns,
   resolveHarnessSessionKey,
+  type AtRestFile,
   type AtRestLine,
   type HarnessSessionKey,
   type ManifestPart,
@@ -69,6 +70,7 @@ export interface AtRestState {
   lines: AtRestLine[];
   totalLines: number;
   nextFromLine: number | null;
+  file: AtRestFile | null;
   error?: string;
   loadMore: () => void;
   loadingMore: boolean;
@@ -78,6 +80,7 @@ export function useHarnessAtRest(key: HarnessSessionKey | null): AtRestState {
   const [lines, setLines] = useState<AtRestLine[]>([]);
   const [totalLines, setTotalLines] = useState(0);
   const [nextFromLine, setNextFromLine] = useState<number | null>(1);
+  const [file, setFile] = useState<AtRestFile | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -88,6 +91,7 @@ export function useHarnessAtRest(key: HarnessSessionKey | null): AtRestState {
     setLines([]);
     setTotalLines(0);
     setNextFromLine(1);
+    setFile(null);
     setError(undefined);
     if (!key) {
       setStatus("idle");
@@ -95,12 +99,14 @@ export function useHarnessAtRest(key: HarnessSessionKey | null): AtRestState {
     }
     let cancelled = false;
     setStatus("loading");
-    fetchHarnessAtRest(key, { fromLine: 1, limit: AT_REST_PAGE_SIZE })
+    // Pull the real original file once, on the first page.
+    fetchHarnessAtRest(key, { fromLine: 1, limit: AT_REST_PAGE_SIZE, includeFile: true })
       .then((res) => {
         if (cancelled || activeKeyRef.current !== key) return;
         setLines(res.lines);
         setTotalLines(res.totalLines);
         setNextFromLine(res.nextFromLine);
+        setFile(res.file ?? null);
         setStatus("ready");
       })
       .catch((err) => {
@@ -132,7 +138,7 @@ export function useHarnessAtRest(key: HarnessSessionKey | null): AtRestState {
       });
   }, [key, nextFromLine, loadingMore]);
 
-  return { status, lines, totalLines, nextFromLine, error, loadMore, loadingMore };
+  return { status, lines, totalLines, nextFromLine, file, error, loadMore, loadingMore };
 }
 
 export interface TurnsState {
@@ -224,7 +230,14 @@ function slugRecordType(value: string): string {
 }
 
 export const AT_REST_OVERVIEW_NODE_ID = "at-rest:overview";
+export const AT_REST_FILE_NODE_ID = "at-rest:file";
 export const TURN_READY_OVERVIEW_NODE_ID = "turn-ready:overview";
+
+function formatFileBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export function atRestNodeId(line: number): string {
   return `at-rest:line:${line}`;
@@ -239,7 +252,11 @@ export interface AtRestTree {
   linesByNodeId: Map<string, AtRestLine>;
 }
 
-export function buildAtRestTree(lines: AtRestLine[], totalLines: number): AtRestTree {
+export function buildAtRestTree(
+  lines: AtRestLine[],
+  totalLines: number,
+  file: AtRestFile | null = null,
+): AtRestTree {
   const width = Math.max(3, String(totalLines || lines.length || 1).length);
   const linesByNodeId = new Map<string, AtRestLine>();
 
@@ -256,28 +273,35 @@ export function buildAtRestTree(lines: AtRestLine[], totalLines: number): AtRest
     };
   });
 
+  const children: ContextTreeNode[] = [];
+
+  // The genuine original file, its real name — the untouched source of truth.
+  if (file) {
+    children.push({
+      id: AT_REST_FILE_NODE_ID,
+      name: file.name,
+      path: ["at-rest", file.name],
+      kind: "atom",
+      detail: `${formatFileBytes(file.bytes)} · original`,
+    });
+  }
+
+  // Our per-line breakdown of that same file.
+  children.push({
+    id: "at-rest:lines",
+    name: "lines",
+    path: ["at-rest", "lines"],
+    kind: "folder",
+    detail: `${lines.length} / ${totalLines}`,
+    children: leaves,
+  });
+
   const tree: ContextTreeNode = {
     id: "at-rest:root",
     name: "at-rest",
     path: ["at-rest"],
     kind: "folder",
-    children: [
-      {
-        id: AT_REST_OVERVIEW_NODE_ID,
-        name: "session.json",
-        path: ["at-rest", "session.json"],
-        kind: "overview",
-        detail: `${totalLines} jsonl lines`,
-      },
-      {
-        id: "at-rest:lines",
-        name: "lines",
-        path: ["at-rest", "lines"],
-        kind: "folder",
-        detail: `${lines.length} / ${totalLines}`,
-        children: leaves,
-      },
-    ],
+    children,
   };
 
   return { tree, linesByNodeId };
@@ -325,13 +349,6 @@ export function buildTurnReadyTree(manifest: TurnReadyManifest | null): TurnRead
     path: ["turn-ready"],
     kind: "folder",
     children: [
-      {
-        id: TURN_READY_OVERVIEW_NODE_ID,
-        name: "manifest.json",
-        path: ["turn-ready", "manifest.json"],
-        kind: "overview",
-        detail: `${manifest.assembly.status} · confidence ${manifest.assembly.confidence}`,
-      },
       {
         id: "turn-ready:parts",
         name: "parts",

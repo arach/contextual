@@ -2,22 +2,38 @@
  * Tokens feed --hg-* aliases; Tailwind neutrals are remapped in tailwind.css. */
 
 :root {
-  --ctx-bg: #0c0c0e;
-  --ctx-bg-tint: #121215;
-  --ctx-surface: #18181c;
-  --ctx-surface-2: #1f1f24;
-  --ctx-elevated: #26262c;
+  /* ── WARM GRAPHITE — "the same studio with the lights down" ─────────────────
+   * Warm charcoal neutrals: R ≥ G > B by a few points so the field reads subtly
+   * WARM (graphite / espresso), lifted well off black — never brown/sepia/tan
+   * (chroma held to ~8%). The coherent dark counterpart to the warm-paper light
+   * mode below, stepped as a deliberate FOUR-TIER elevation ladder lit from
+   * above. Perceived-lightness staircase (0–255): 19 · 24 · 30 · 33 · 40 · 44
+   * (panel) · 52 · 57 · 65 — even, legible front-to-back depth. */
 
-  --ctx-ink: #ededf0;
-  --ctx-ink-2: #c8c8d0;
-  --ctx-ink-3: #9898a6;
-  --ctx-muted: #6e6e7a;
-  --ctx-dim: #54545e;
-  --ctx-placeholder: #4a4a54;
+  /* Tier 1 — BASE CANVAS: the app floor / reference plane. */
+  --ctx-bg: #211f1c;
+  --ctx-bg-tint: #282622; /* hover lift on the floor; recessed input well on panels */
 
-  --ctx-line: #2a2a32;
-  --ctx-hairline: #36363f;
+  /* Tier 2 → 3 — RAISED content surfaces → FLOATING. */
+  --ctx-surface: #37342f;   /* cards, tree sidebar (raised on the recessed center) */
+  --ctx-surface-2: #3c3833; /* replay bar, viewer chrome edges */
+  --ctx-elevated: #45413b;  /* Tier 3 floating: popovers / palette / dropdowns */
 
+  /* Warm ink ramp — warm off-white stepped down through warm graphite grays
+   * (matches the light mode's warm-ink family; no cool blue lean). */
+  --ctx-ink: #f0ede6;
+  --ctx-ink-2: #cdc8bf;
+  --ctx-ink-3: #a39c90;
+  --ctx-muted: #7c766b;
+  --ctx-dim: #5d574e;
+  --ctx-placeholder: #4f4a42;
+
+  /* Warm, faintly-luminous etched hairlines — crisp against the lifted floor. */
+  --ctx-line: #332f2a;
+  --ctx-hairline: #423c34;
+
+  /* Cool steel accent on a warm field — INTENTIONAL and UNCHANGED (data/state
+   * only; same warm-field / cool-accent logic as light mode). */
   --ctx-accent: #8eb4d6;
   --ctx-accent-deep: #6a96bc;
   --ctx-accent-tint: color-mix(in srgb, var(--ctx-accent) 14%, transparent);
@@ -28,22 +44,37 @@
   --ctx-ok: #72c19a;
   --ctx-ok-tint: color-mix(in srgb, var(--ctx-ok) 14%, transparent);
 
-  --ctx-primary: #e8e8ec;
-  --ctx-primary-fg: #0c0c0e;
-  --ctx-primary-muted: #2e2e36;
-  --ctx-primary-muted-fg: #5c5c68;
+  /* Primary button — warm off-white ink on warm graphite. */
+  --ctx-primary: #ece7de;
+  --ctx-primary-fg: #14110d;
+  --ctx-primary-muted: #302c26;
+  --ctx-primary-muted-fg: #5f5850;
 
-  /* Viewer / inset surfaces — components previously hard-coded these charcoals.
-   * Tokenised so the light theme can flip them (see [data-hudson-theme="light"]). */
-  --ctx-viewer-bg: #0d1114;
-  --ctx-viewer-bar: #101518;
-  --ctx-card-inset: #080b0d;
+  /* Tier 0 — RECESSED WELL: transcript / code viewers, insets, input fields.
+   * DARKEST tier; lit from above via the inset rules in the DARK section below. */
+  --ctx-viewer-bg: #181614;
+  --ctx-viewer-bar: #1e1c19;
+  --ctx-card-inset: #151311;
 
-  /* Popover / modal elevation shadow — dark-tuned by default, softened in light. */
-  --ctx-pop-shadow: 0 12px 30px -16px rgba(0, 0, 0, 0.7);
-  --ctx-modal-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.9);
-  --ctx-card-shadow: 0 8px 22px -16px rgba(0, 0, 0, 0.6);
-  --ctx-card-shadow-hover: 0 16px 28px -18px rgba(0, 0, 0, 0.9);
+  /* Elevation shadows — warm-black drop (rgba 10,7,4) + warm-white top highlight
+   * (rgba 255,250,244), never pure black/white. Tier 3 (pop/modal) is the
+   * largest + softest; card is the raised-panel drop. */
+  --ctx-pop-shadow: inset 0 1px 0 rgba(255, 250, 244, 0.05), 0 14px 34px -18px rgba(10, 7, 4, 0.72);
+  --ctx-modal-shadow: inset 0 1px 0 rgba(255, 250, 244, 0.055), 0 34px 90px -24px rgba(10, 7, 4, 0.82);
+  --ctx-card-shadow: inset 0 1px 0 rgba(255, 250, 244, 0.045), 0 10px 26px -18px rgba(10, 7, 4, 0.6);
+  --ctx-card-shadow-hover: inset 0 1px 0 rgba(255, 250, 244, 0.07), 0 18px 32px -20px rgba(10, 7, 4, 0.78);
+
+  /* Canvas texture — CSS-only, felt more than seen. A warm-tinted feTurbulence
+   * grain (~7.5%, R>G>B via a second colour-matrix so it isn't pure-white
+   * noise), a soft WARM top-center lamp glow, and a warm edge vignette. Layered
+   * onto the app's opaque canvas surfaces (see the DARK section); never over
+   * pure body, background-image only (no pointer blocking). */
+  --ctx-grain: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='150' height='150'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/><feColorMatrix type='matrix' values='1.06 0 0 0 0 0 1 0 0 0 0 0 0.8 0 0 0 0 0 1 0'/></filter><rect width='150' height='150' filter='url(%23n)' opacity='0.075'/></svg>");
+  --ctx-canvas-glow: radial-gradient(120% 80% at 50% -12%, rgba(255, 244, 228, 0.04), rgba(255, 244, 228, 0) 60%);
+  --ctx-canvas-vignette: radial-gradient(140% 120% at 50% 40%, transparent 58%, rgba(8, 6, 3, 0.34));
+  /* 1px warm-white top-edge sheen painted as a background-image line — lifts a
+   * panel off the canvas without touching box-shadow (keeps focus rings intact). */
+  --ctx-top-sheen: linear-gradient(180deg, rgba(255, 250, 244, 0.055) 0, rgba(255, 250, 244, 0) 1.5px);
 
   /* Legacy aliases — existing components use --hg-* */
   --hg-bg: var(--ctx-bg);
@@ -717,6 +748,132 @@ html[data-contextual-shell="scout"] {
   --studio-rule-strong: color-mix(in oklab, var(--ctx-ink) 10%, transparent);
   --studio-chip-bg:     color-mix(in oklab, var(--ctx-ink) 3%, transparent);
   --studio-chip-border: color-mix(in oklab, var(--ctx-ink) 6%, transparent);
+}
+
+/* ============================================================================
+ * DARK — warm-graphite CHROME remap (dark + hudson-template only).
+ *
+ * HudsonKit's shell chrome doesn't read --ctx-*: the RUNS rail + INSPECTOR paint
+ * on `bg-card`, the shell floor on `bg-background`, popovers/command-palette on
+ * `bg-popover` — all NEUTRAL oklch (e.g. --card: 0.18 0 0), so a --ctx-* change
+ * alone leaves them cool-neutral and out of family. Remap those semantic tokens
+ * into the SAME warm-graphite ladder (subtle warm hue ~74, chroma ≤ 0.008 →
+ * graphite, not brown) so every region — nav, rails, inspector, floating
+ * overlays — reads as one material. oklch L mirrors the --ctx-* tiers:
+ *   --background 0.240 = --ctx-bg (Tier1)  ·  --card 0.295 = panel (Tier2)
+ *   --popover 0.352 ≈ --ctx-elevated (Tier3).
+ * Selector is attribute-exists (not html-prefixed) on purpose: the shell repeats
+ * data-hudson-template/-theme on a nested wrapper that re-declares --card, so we
+ * must override at EVERY level. Equal specificity (0,2,0) to tokens.css, won by
+ * source order (contextual.css is imported after hudsonkit/styles). Fully
+ * dark-guarded via [data-hudson-theme="dark"]; light flips via tokens.css and is
+ * left completely untouched.
+ * ============================================================================ */
+[data-hudson-template][data-hudson-theme="dark"] {
+  --background: 0.240 0.006 74;         /* Tier 1 — shell floor (matches --ctx-bg) */
+  --card: 0.295 0.007 74;               /* Tier 2 — RUNS rail + INSPECTOR panels */
+  --popover: 0.352 0.008 74;            /* Tier 3 — palette / popovers / menus */
+  --secondary: 0.343 0.008 74;
+  --muted: 0.278 0.006 74;
+  --border: 0.310 0.007 74;
+  --input: 0.355 0.008 74;
+  --foreground: 0.947 0.008 92;         /* warm off-white ink (matches --ctx-ink) */
+  --card-foreground: 0.947 0.008 92;
+  --popover-foreground: 0.947 0.008 92;
+  --secondary-foreground: 0.947 0.008 92;
+  --muted-foreground: 0.645 0.008 78;   /* warm-gray secondary text */
+
+  /* Chrome shadows → warm-black drop + warm-white top highlight (light above). */
+  --hud-shadow-panel: 0 0 30px rgba(10, 7, 4, 0.55), inset 0 1px 0 rgba(255, 250, 244, 0.06);
+  --hud-shadow-bar: 0 -5px 30px rgba(10, 7, 4, 0.32), inset 0 1px 0 rgba(255, 250, 244, 0.035);
+  --hud-shadow-nav: 0 4px 30px rgba(10, 7, 4, 0.5);
+  --hud-shadow-minimap: 0 0 20px rgba(10, 7, 4, 0.62);
+  --hud-edge-fade-dark: rgba(10, 7, 4, 0.22);
+  --hud-edge-fade-bottom: rgba(10, 7, 4, 0.32);
+  /* Canvas dot-grid → warm-white specks (not cool white). */
+  --hud-canvas-dot-minor: rgba(255, 250, 244, 0.055);
+  --hud-canvas-dot-major: rgba(255, 250, 244, 0.09);
+  /* Diff surface → warm well (was cool near-black #0a0f12). */
+  --hud-diff-surface-bg: #131110;
+}
+
+/* ============================================================================
+ * DARK — canvas texture + elevation (dark only; guarded off light).
+ *
+ * The app is a stack of opaque Tailwind-utility surfaces, so texture can't live
+ * on a hidden body::before — it layers directly onto the canvas surfaces via
+ * background-image (grain + top glow), while panels get a 1px top sheen so they
+ * lift off that canvas. All background-image only: no box-shadow (Tailwind focus
+ * rings stay intact), no z-index games, no pointer interception.
+ * ============================================================================ */
+
+/* Canvas surfaces — the full-bleed shell floor, the workbench column, and the
+ * recessed viewer. Warm grain + a soft WARM top-center lamp glow (a warm lamp
+ * above the desk) so the floor isn't flat dead-black. The opaque canvas that
+ * sits topmost in any region is the only one whose texture shows, so grain
+ * never visibly doubles. */
+html:not([data-hudson-theme="light"]) .bg-background.inset-0 {
+  background-image: var(--ctx-canvas-vignette), var(--ctx-canvas-glow), var(--ctx-grain);
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-size: 100% 100%, 100% 100%, 150px 150px;
+}
+html:not([data-hudson-theme="light"]) [class*="bg-[var(--hg-bg)]"],
+html:not([data-hudson-theme="light"]) [class*="bg-[var(--ctx-viewer-bg)]"] {
+  background-image: var(--ctx-canvas-glow), var(--ctx-grain);
+  background-repeat: no-repeat, repeat;
+  background-size: 100% 100%, 150px 150px;
+}
+
+/* ── Elevation model — four tiers, one light source (from above) ──────────────
+ * Texture stays background-image (no pointer/z-index games); the elevation
+ * SHADOWS here are box-shadow on containers only — never on focus-ring targets —
+ * so Tailwind focus rings stay intact. */
+
+/* Tier 2/3 RAISED — a 1px warm top-edge highlight: the surface catches light
+ * where it meets the canvas above it. A background-image line, so it never
+ * collides with focus-ring box-shadows. Covers cards, tree rail, chrome edges,
+ * and the Tier-3 floating surfaces. */
+html:not([data-hudson-theme="light"]) [class*="bg-[var(--hg-surface)]"],
+html:not([data-hudson-theme="light"]) [class*="bg-[var(--hg-surface-2)]"],
+html:not([data-hudson-theme="light"]) [class*="bg-[var(--ctx-elevated)]"] {
+  background-image: var(--ctx-top-sheen);
+}
+
+/* Tier 2 RAILS & PANELS — the RUNS rail (data-frame-panel="manifest") and the
+ * INSPECTOR (…="inspector") ride on bg-card (remapped warm above). Give them the
+ * same warm top-edge sheen; their warm drop/gutter shadow comes from
+ * --hud-shadow-panel (remapped warm above). This lifts each rail clearly off the
+ * recessed center that sits between them. */
+html:not([data-hudson-theme="light"]) [data-frame-panel="manifest"],
+html:not([data-hudson-theme="light"]) [data-frame-panel="inspector"] {
+  background-image: var(--ctx-top-sheen);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 250, 244, 0.045),
+    0 6px 22px -14px rgba(10, 7, 4, 0.55);
+}
+
+/* Tier 3 INSPECTOR CARDS — read one tier above their Tier-2 panel: a soft warm
+ * drop shadow beneath each card (its top highlight is already supplied by the
+ * sheen line above). */
+html:not([data-hudson-theme="light"]) #explore-panel-inspector [class*="bg-[var(--hg-surface)]"] {
+  box-shadow: 0 6px 16px -12px rgba(10, 7, 4, 0.55);
+}
+
+/* Tier 0 WELL — the recessed transcript / viewer reading panes. Light falls PAST
+ * the top inner lip into the recess (a soft dark inset at the top inner edge)
+ * while a faint 1px warm light catches the bottom inner edge. Reads as milled
+ * out BELOW the floor — the deliberate counter-weight to the raised rails. */
+html:not([data-hudson-theme="light"]) [class*="bg-[var(--ctx-viewer-bg)]"] {
+  box-shadow:
+    inset 0 3px 7px -3px rgba(10, 7, 4, 0.5),
+    inset 0 1px 0 rgba(10, 7, 4, 0.45),
+    inset 0 -1px 0 rgba(255, 250, 244, 0.02);
+}
+
+/* Primary button lifts with a subtle warm inset top highlight (no focus ring to
+ * preserve here, so box-shadow is safe). Dark only — light stays untouched. */
+html:not([data-hudson-theme="light"]) .hg-btn.primary {
+  box-shadow: inset 0 1px 0 rgba(255, 250, 244, 0.06);
 }
 
 /* ============================================================================
