@@ -30,6 +30,12 @@ import { useThreadStore } from "@/state/useThreadStore";
 export interface ContextualAppState {
   mode: AppMode;
   setMode: (mode: AppMode) => void;
+  /** Session id whose full-bleed Session Replay surface is open, or null. */
+  replaySessionId: string | null;
+  /** Open the full-bleed Session Replay surface for a session (URL: ?replay=id). */
+  openReplay: (id: string) => void;
+  /** Close the Session Replay surface, returning to Explore (clears ?replay=). */
+  closeReplay: () => void;
   explore: ExploreAnalysisState;
   designer: ReturnType<typeof useDesignerState>;
   store: ReturnType<typeof useThreadStore>;
@@ -78,6 +84,8 @@ export function ContextualProvider({ children }: { children: ReactNode }) {
     false,
   );
   const [walkthroughReplayTick, setWalkthroughReplayTick] = useState(0);
+  const [replaySessionId, setReplaySessionId] = useState<string | null>(null);
+  const initialReplayAppliedRef = useRef(false);
   const packageOn = useContextualFlag("surface.package");
   const instantiateOn = useContextualFlag("surface.instantiate");
   const store = useThreadStore();
@@ -119,6 +127,30 @@ export function ContextualProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!modeEnabled(mode)) setMode("analysis");
   }, [mode, modeEnabled, setMode]);
+
+  // Bootstrap the replay surface from ?replay=<sessionId> on first load, mirroring
+  // the ?mode= literal-parse above. Unlike ?mode= we leave the param in place: it
+  // reflects the open surface, and openReplay/closeReplay maintain it thereafter.
+  useEffect(() => {
+    if (initialReplayAppliedRef.current) return;
+    initialReplayAppliedRef.current = true;
+    const requested = new URLSearchParams(window.location.search).get("replay");
+    if (requested) setReplaySessionId(requested);
+  }, []);
+
+  const openReplay = useCallback((id: string) => {
+    setReplaySessionId(id);
+    const url = new URL(window.location.href);
+    url.searchParams.set("replay", id);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  const closeReplay = useCallback(() => {
+    setReplaySessionId(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("replay");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
 
   useEffect(() => {
     if (mode !== "analysis" || !explore.activeId) return;
@@ -190,6 +222,9 @@ export function ContextualProvider({ children }: { children: ReactNode }) {
     () => ({
       mode,
       setMode,
+      replaySessionId,
+      openReplay,
+      closeReplay,
       explore,
       designer,
       store,
@@ -216,6 +251,9 @@ export function ContextualProvider({ children }: { children: ReactNode }) {
     [
       mode,
       setMode,
+      replaySessionId,
+      openReplay,
+      closeReplay,
       explore,
       designer,
       store,

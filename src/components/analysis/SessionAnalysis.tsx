@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import { SidePanel } from "hudsonkit/chrome";
-import { BarChart3, GitBranch, Layers, ListTree, Pin, PieChart, Send, Terminal } from "lucide-react";
+import { BarChart3, GitBranch, Layers, ListTree, Pin, PieChart, PlayCircle, Send, Terminal } from "lucide-react";
 
 import {
   ANALYSIS_THRESHOLDS,
@@ -647,15 +647,23 @@ export function SessionAnalysisWorkbench({
   state,
   showContextConsole = false,
   onOpenTree,
+  onReplaySession,
 }: {
   state: AnalysisState;
   showContextConsole?: boolean;
   onOpenTree?: () => void;
+  onReplaySession?: (id: string) => void;
 }) {
   const session = state.active;
   const snapshot = state.activeSnapshot;
   const [consoleOpen, setConsoleOpen] = useState(true);
   const activeEntry = state.catalogEntries.find((entry) => entry.id === state.activeId);
+
+  // The "Replay session" CTA graduates in via a flag. Default OFF: this slim
+  // header bar is not rendered at all, so Explore shows the ContextViewer exactly
+  // as before. On, it surfaces a CTA next to the active session's title that opens
+  // the full-bleed Session Replay surface.
+  const replayOn = useContextualFlag("explore.replay");
 
   if (state.error) {
     return <WorkbenchShell title="SESSION ANALYSIS" meta={state.error} tone="warn" />;
@@ -672,6 +680,25 @@ export function SessionAnalysisWorkbench({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-[var(--hg-bg)]">
+      {replayOn && onReplaySession && (
+        <div className="flex shrink-0 items-center gap-3 border-b border-[var(--hg-line)] bg-[var(--hg-surface-2)] px-4 py-2">
+          <span
+            className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--hg-ink)]"
+            title={session.title}
+          >
+            {session.title}
+          </span>
+          <button
+            type="button"
+            onClick={() => onReplaySession(session.id)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-[2px] border border-[var(--hg-accent)] bg-[var(--hg-accent)] px-3 py-1.5 hg-mono text-[10px] uppercase tracking-wider text-[var(--hg-bg)] transition-opacity hover:opacity-90"
+          >
+            <PlayCircle size={12} />
+            Replay session
+          </button>
+        </div>
+      )}
+
       <ContextViewer
         session={session}
         snapshot={snapshot}

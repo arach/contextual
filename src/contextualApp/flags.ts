@@ -43,6 +43,12 @@ export const CONTEXTUAL_FLAGS = createFlagRegistry({
       "Advanced: simulate which context survives at a given token budget (pinned spine + recent tail). Off by default — the default Inspector just explains composition.",
     defaultEnabled: false,
   },
+  "explore.replay": {
+    label: "Session replay",
+    description:
+      "Play a single session turn-by-turn: accumulation mountain + transport + per-turn impact.",
+    defaultEnabled: false,
+  },
 } as const);
 
 export type ContextualFlagKey = keyof typeof CONTEXTUAL_FLAGS;

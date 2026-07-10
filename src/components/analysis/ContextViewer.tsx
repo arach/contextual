@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import {
   AlertTriangle,
+  ArrowRight,
   ChevronDown,
   ChevronRight,
   Database,
@@ -55,6 +56,7 @@ import { displaySessionTitle } from "@/lib/sessionLabel";
 import { sessionIdSuffix, sessionNavMeta } from "@/lib/sessionNavLabel";
 import { formatObservedRelative } from "@/lib/sessionExplore";
 import type {
+  AtRestFile,
   AtRestLine,
   ExploreContextMode,
   ManifestPart,
@@ -63,8 +65,7 @@ import type {
   TurnRecord,
 } from "@/lib/harnessContract";
 import {
-  AT_REST_OVERVIEW_NODE_ID,
-  TURN_READY_OVERVIEW_NODE_ID,
+  AT_REST_FILE_NODE_ID,
   buildAtRestTree,
   buildTurnReadyTree,
   turnLabel,
@@ -198,8 +199,8 @@ export function ContextViewer({
   // its rollup can flow into the budget strip and the right rail.
   const curate = useCuration({ sessionId: session.id, tree: contextualTree });
   const atRestTreeData = useMemo(
-    () => buildAtRestTree(atRest.lines, atRest.totalLines),
-    [atRest.lines, atRest.totalLines],
+    () => buildAtRestTree(atRest.lines, atRest.totalLines, atRest.file),
+    [atRest.lines, atRest.totalLines, atRest.file],
   );
   const turnReadyTreeData = useMemo(
     () => buildTurnReadyTree(manifest.manifest),
@@ -213,10 +214,10 @@ export function ContextViewer({
         ? atRestTreeData.tree
         : turnReadyTreeData.tree;
 
-  const [atRestSelectedId, setAtRestSelectedId] = useState<string>(AT_REST_OVERVIEW_NODE_ID);
-  const [turnReadySelectedId, setTurnReadySelectedId] = useState<string>(
-    TURN_READY_OVERVIEW_NODE_ID,
-  );
+  // Default to the mode's root folder (no record picked) so the viewer opens on
+  // the orientation panel, not a specific line.
+  const [atRestSelectedId, setAtRestSelectedId] = useState<string>("at-rest:root");
+  const [turnReadySelectedId, setTurnReadySelectedId] = useState<string>("turn-ready:root");
 
   const currentSelectedId =
     mode === "contextual"
@@ -440,7 +441,7 @@ export function ContextViewer({
             id={EXPLORE_PANEL_IDS.tree}
             tabIndex={0}
             onKeyDown={onTreeKeyDown}
-            className="flex h-full min-w-0 flex-col border-r border-[var(--hg-line)] bg-[var(--hg-surface)] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--hg-accent)]"
+            className="flex h-full min-w-0 flex-1 flex-col border-r border-[var(--hg-line)] bg-[var(--hg-surface)] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--hg-accent)]"
             aria-label="Context file tree"
           >
             <div className="min-h-0 flex-1 overflow-auto">
@@ -556,17 +557,19 @@ export function ContextViewer({
           />
         ) : mode === "at-rest" ? (
           <AtRestEditorPane
+            session={session}
+            file={atRest.file}
             node={selected}
             harnessKeyStatus={harnessKey.status}
             harnessKey={harnessKey.key}
             harnessError={harnessKey.error ?? atRest.error}
             status={atRest.status}
             totalLines={atRest.totalLines}
-            loadedLines={atRest.lines.length}
             line={selected ? atRestTreeData.linesByNodeId.get(selected.id) ?? null : null}
           />
         ) : (
           <TurnReadyEditorPane
+            session={session}
             node={selected}
             harnessKeyStatus={harnessKey.status}
             harnessKey={harnessKey.key}
@@ -765,6 +768,16 @@ function ContextEditorPane({
     },
     [node, onBlockDraftChange, onContextNodeDraftChange],
   );
+
+  if (node?.kind === "overview") {
+    return (
+      <ViewerOverview
+        session={session}
+        mode="contextual"
+        stat={`${formatAnalysisTokens(snapshot.threshold)} window · ${session.atoms.length} atoms`}
+      />
+    );
+  }
 
   if (!node || !content) {
     return (
@@ -1179,23 +1192,144 @@ function HarnessFallback({
   );
 }
 
+/**
+ * A slim, editor-style status line pinned to the bottom of a viewer well. It
+ * gives the recessed reading pane a "floor" — so a short record reads as a
+ * document inside an editor, not content floating in an empty void.
+ */
+function ViewerStatusBar({
+  left,
+  center,
+  hint,
+  right,
+}: {
+  left: string;
+  center?: string;
+  hint?: string;
+  right?: string;
+}) {
+  const dot = <span className="text-[var(--hg-line)]">·</span>;
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-t border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-1 font-mono text-[9px] uppercase tracking-wider">
+      <span className="tabular-nums text-[var(--hg-ink-2)]">{left}</span>
+      {center && (
+        <>
+          {dot}
+          <span className="text-[var(--hg-muted)]">{center}</span>
+        </>
+      )}
+      <span className="ml-auto flex items-center gap-2">
+        {hint && <span className="text-[var(--hg-muted)]">{hint}</span>}
+        {hint && right && dot}
+        {right && <span className="tabular-nums text-[var(--hg-ink-2)]">{right}</span>}
+      </span>
+    </div>
+  );
+}
+
+const OVERVIEW_COPY: Record<
+  ExploreContextMode,
+  { blurb: string; actions: string[] }
+> = {
+  "at-rest": {
+    blurb:
+      "The raw JSONL as it lives on disk — one record per line, exactly as the harness wrote it. Nothing simulated or repacked.",
+    actions: [
+      "Pick a line in the tree to read its parsed record",
+      "Switch to Contextual to see how it fills the window",
+    ],
+  },
+  contextual: {
+    blurb:
+      "A simulated context window built from this transcript — records grouped into buckets and packed against a token budget.",
+    actions: [
+      "Open a file in the tree to inspect an atom or slice",
+      "Switch to At-rest to read the untouched native records",
+    ],
+  },
+  "turn-ready": {
+    blurb:
+      "The ordered manifest as it was assembled and sent to the model — every part in the order the harness shipped it.",
+    actions: [
+      "Open a part to see its content and provenance",
+      "Switch to At-rest to read the untouched native records",
+    ],
+  },
+};
+
+/**
+ * The landing state for a session viewer: shown when a session is loaded but no
+ * file/line/part is selected yet. Orients you to *this session* and *this view*
+ * (not a tool tutorial) — replaces the old terse markdown-in-the-editor overview.
+ */
+function ViewerOverview({
+  session,
+  mode,
+  stat,
+}: {
+  session: SessionAnalysis;
+  mode: ExploreContextMode;
+  stat: string;
+}) {
+  const copy = OVERVIEW_COPY[mode];
+  return (
+    <div className="flex min-w-0 flex-1 flex-col overflow-auto bg-[var(--ctx-viewer-bg)]">
+      <div className="mx-auto w-full max-w-[600px] px-8 py-14">
+        <div className="hg-section-label mb-3">session overview</div>
+        <h1 className="font-mono text-[19px] font-medium leading-tight text-[var(--hg-ink)]">
+          {displaySessionTitle(session.title)}
+        </h1>
+        <div className="mt-2 font-mono text-[11px] text-[var(--hg-muted)]">
+          {sessionNavMeta(session)} · {stat}
+        </div>
+
+        <div className="mt-7 rounded-[3px] border border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] p-4">
+          <div className="flex items-center gap-2">
+            <span className="hg-pill accent">{mode}</span>
+            <span className="hg-mono text-[10px] uppercase tracking-wider text-[var(--hg-muted)]">
+              what you&rsquo;re looking at
+            </span>
+          </div>
+          <p className="mt-2.5 text-[13px] leading-[1.55] text-[var(--hg-ink-2)]">
+            {copy.blurb}
+          </p>
+        </div>
+
+        <ul className="mt-6 space-y-2">
+          {copy.actions.map((action) => (
+            <li
+              key={action}
+              className="flex items-start gap-2 text-[12.5px] leading-[1.5] text-[var(--hg-muted)]"
+            >
+              <ArrowRight size={13} className="mt-[3px] shrink-0 text-[var(--hg-accent)]" />
+              <span>{action}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 function AtRestEditorPane({
+  session,
+  file,
   node,
   harnessKeyStatus,
   harnessKey,
   harnessError,
   status,
   totalLines,
-  loadedLines,
   line,
 }: {
+  session: SessionAnalysis;
+  file: AtRestFile | null;
   node: ContextTreeNode | null;
   harnessKeyStatus: HarnessKeyStatus;
   harnessKey: string | null;
   harnessError?: string;
   status: HarnessKeyStatus;
   totalLines: number;
-  loadedLines: number;
   line: AtRestLine | null;
 }) {
   if (harnessKeyStatus !== "ready" || !harnessKey) {
@@ -1208,80 +1342,106 @@ function AtRestEditorPane({
     );
   }
 
-  if (status === "loading" && !line && node?.id !== AT_REST_OVERVIEW_NODE_ID) {
-    return (
-      <div className="flex flex-1 items-center justify-center bg-[var(--ctx-viewer-bg)] text-[12px] text-[var(--hg-muted)]">
-        Loading at-rest lines…
-      </div>
-    );
-  }
-
   if (status === "error") {
     return (
       <HarnessFallback status="error" keyMissing={false} error={harnessError} />
     );
   }
 
-  if (node?.id === AT_REST_OVERVIEW_NODE_ID || !line) {
-    const overview = [
-      "# at-rest",
-      "",
-      "Native JSONL records as they live on disk.",
-      "Pick a line in the tree to inspect its parsed JSON.",
-      "",
-      `lines loaded: ${loadedLines} / ${totalLines}`,
-    ].join("\n");
+  // The genuine original file, untouched — real name, real bytes on disk.
+  if (node?.id === AT_REST_FILE_NODE_ID && file) {
+    const fileLines = file.content.split("\n").length;
     return (
       <div className="flex min-w-0 flex-1 flex-col bg-[var(--ctx-viewer-bg)]">
-        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-2">
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-2 font-mono text-[11px]">
           <FileCode2 size={14} className="shrink-0 text-[var(--hg-accent)]" />
-          <div className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--hg-ink)]">
-            at-rest / session.json
-          </div>
-          <span className="hg-pill">overview</span>
+          <span className="shrink-0 text-[var(--hg-ink)]">{file.name}</span>
+          <span className="hg-pill shrink-0">original</span>
+          {file.truncated && (
+            <span className="hg-pill warn shrink-0" title="Very large file — showing the start; full file is on disk">
+              truncated
+            </span>
+          )}
+          <span
+            className="ml-auto min-w-0 truncate pl-3 text-[10px] text-[var(--hg-muted)]"
+            title={file.path}
+          >
+            {file.path}
+          </span>
         </div>
         <div className="min-h-0 flex-1">
           <CodeEditor
-            key="at-rest:overview"
-            code={overview}
-            language="markdown"
-            filename="session.md"
+            key={`at-rest:file:${file.path}`}
+            code={file.content}
+            language="json"
+            filename={file.name}
             showLineNumbers
             className="h-full min-h-0"
             onChange={() => {
-              // read-only overview
+              // the original file is read-only
             }}
           />
         </div>
+        <ViewerStatusBar
+          left={`${totalLines} record${totalLines === 1 ? "" : "s"}`}
+          center="original file · on disk"
+          hint={file.truncated ? "truncated — full file on disk" : "read-only"}
+          right={`jsonl · ${fileLines} line${fileLines === 1 ? "" : "s"}`}
+        />
       </div>
     );
   }
 
+  // No line picked yet (initial landing, or a folder is selected) — orient the
+  // reader. This doubles as the loading state while records stream in.
+  if (!line) {
+    return (
+      <ViewerOverview
+        session={session}
+        mode="at-rest"
+        stat={
+          totalLines
+            ? `${totalLines} record${totalLines === 1 ? "" : "s"} on disk`
+            : "reading records…"
+        }
+      />
+    );
+  }
+
   const json = safeStringifyJson(line.native);
-  const meta: Array<[string, string]> = [
-    ["line", String(line.line)],
-    ["record", line.recordType],
-  ];
-  if (line.role) meta.push(["role", line.role]);
-  if (line.timestamp) meta.push(["timestamp", line.timestamp]);
-  if (line.turnId) meta.push(["turn", line.turnId]);
-  if (line.source.path) meta.push(["source", `${line.source.path}:${line.line}`]);
+  const jsonLineCount = json.split("\n").length;
+  const filename = node?.path[node.path.length - 1] ?? `line-${line.line}.json`;
+  const sourceRef = line.source.path ? `${line.source.path}:${line.line}` : null;
+  const metaChips: Array<[string, string]> = [];
+  if (line.role && line.role !== "unknown") metaChips.push(["role", line.role]);
+  if (line.timestamp) metaChips.push(["at", line.timestamp.replace("T", " ").slice(0, 16)]);
+  if (line.turnId) metaChips.push(["turn", line.turnId]);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-[var(--ctx-viewer-bg)]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-2">
+      {/* One identity strip — filename + record badge + inline meta. The breadcrumb
+          above already owns the full path, so we don't repeat it here. */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-2 font-mono text-[11px]">
         <FileCode2 size={14} className="shrink-0 text-[var(--hg-accent)]" />
-        <div className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--hg-ink)]">
-          {node?.path.join(" / ") ?? `line ${line.line}`}
-        </div>
-        <span className="hg-pill">{line.recordType}</span>
-      </div>
-      <div className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-b border-[var(--hg-line)] bg-[var(--ctx-viewer-bar)] px-4 py-1.5 font-mono text-[10px] text-[var(--hg-muted)]">
-        {meta.map(([k, v]) => (
-          <span key={k}>
-            {k}: <span className="text-[var(--hg-ink-2)]">{v}</span>
+        <span className="shrink-0 text-[var(--hg-ink)]">{filename}</span>
+        <span className="hg-pill shrink-0">{line.recordType}</span>
+        {metaChips.map(([k, v]) => (
+          <span
+            key={k}
+            className="hidden shrink-0 items-center gap-1 text-[var(--hg-muted)] md:inline-flex"
+          >
+            <span className="text-[var(--hg-line)]">·</span>
+            {k} <span className="text-[var(--hg-ink-2)]">{v}</span>
           </span>
         ))}
+        {sourceRef && (
+          <span
+            className="ml-auto min-w-0 truncate pl-3 text-[10px] text-[var(--hg-muted)]"
+            title={sourceRef}
+          >
+            {sourceRef}
+          </span>
+        )}
       </div>
       <div className="min-h-0 flex-1">
         <CodeEditor
@@ -1296,11 +1456,18 @@ function AtRestEditorPane({
           }}
         />
       </div>
+      <ViewerStatusBar
+        left={`line ${line.line} / ${totalLines}`}
+        center={line.recordType}
+        hint="↑↓ walk records"
+        right={`json · ${jsonLineCount} ${jsonLineCount === 1 ? "line" : "lines"}`}
+      />
     </div>
   );
 }
 
 function TurnReadyEditorPane({
+  session,
   node,
   harnessKeyStatus,
   harnessKey,
@@ -1312,6 +1479,7 @@ function TurnReadyEditorPane({
   onSelectTurn,
   part,
 }: {
+  session: SessionAnalysis;
   node: ContextTreeNode | null;
   harnessKeyStatus: HarnessKeyStatus;
   harnessKey: string | null;
@@ -1406,50 +1574,29 @@ function TurnReadyEditorPane({
         </div>
       )}
 
-      <ManifestBody node={node} manifest={manifest} part={part} />
+      <ManifestBody session={session} manifest={manifest} part={part} />
     </div>
   );
 }
 
 function ManifestBody({
-  node,
+  session,
   manifest,
   part,
 }: {
-  node: ContextTreeNode | null;
+  session: SessionAnalysis;
   manifest: TurnReadyManifest;
   part: ManifestPart | null;
 }) {
-  if (node?.id === TURN_READY_OVERVIEW_NODE_ID || !part) {
-    const overview = [
-      "# turn-ready manifest",
-      "",
-      `assembly: ${manifest.assembly.status}`,
-      `confidence: ${manifest.assembly.confidence}`,
-      `adapter: ${manifest.adapterVersion}`,
-      manifest.cwd ? `cwd: ${manifest.cwd}` : "",
-      "",
-      "## parts",
-      ...manifest.parts.map(
-        (p) => `- ${String(p.order).padStart(2, "0")} ${p.kind} · truth=${p.truth}`,
-      ),
-    ]
-      .filter(Boolean)
-      .join("\n");
+  if (!part) {
     return (
-      <div className="min-h-0 flex-1">
-        <CodeEditor
-          key={`manifest-overview:${manifest.id}`}
-          code={overview}
-          language="markdown"
-          filename="manifest.md"
-          showLineNumbers
-          className="h-full min-h-0"
-          onChange={() => {
-            // turn-ready is read-only
-          }}
-        />
-      </div>
+      <ViewerOverview
+        session={session}
+        mode="turn-ready"
+        stat={`${manifest.parts.length} part${manifest.parts.length === 1 ? "" : "s"}${
+          manifest.model ? ` · ${manifest.model}` : ""
+        }`}
+      />
     );
   }
 

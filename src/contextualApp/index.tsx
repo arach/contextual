@@ -3,13 +3,14 @@
 import { useMemo } from "react";
 import { createElement } from "react";
 import { Layers, Radio, SlidersHorizontal } from "lucide-react";
-import type { CommandOption, HudsonApp, StatusColor } from "hudsonkit";
+import type { CommandOption, HudsonApp, StatusColor, TakeoverState } from "hudsonkit";
 import { ContextualProvider, useContextualApp } from "@/contextualApp/ContextualProvider";
 import { useContextualFlag } from "@/contextualApp/flags";
 import { ContextualNavActions, ContextualNavCenter } from "@/contextualApp/NavCenter";
 import { AppContent } from "@/contextualApp/slots/AppContent";
 import { AppLeftPanel } from "@/contextualApp/slots/AppLeftPanel";
 import { AppInspector } from "@/contextualApp/slots/AppInspector";
+import { SessionReplaySurface } from "@/components/analysis/SessionReplaySurface";
 import { buildManifest } from "@/lib/derive";
 import { adjacentSessionId, exploreSessionNavIds } from "@/lib/exploreNavOrder";
 import { loadPhaseColor, loadPhaseLabel } from "@/lib/sessionLoadPhase";
@@ -114,6 +115,23 @@ function useStatus(): { label: string; color: StatusColor } {
   return { label: `${session.project} · ${session.title}`, color: "emerald" };
 }
 
+/**
+ * Drives the shell's Takeover slot: the full-bleed Session Replay surface mounts
+ * (above the shell chrome, background inert) only when `replaySessionId` resolves
+ * to a loaded session. `dismissible` wires the shell's built-in Escape + focus
+ * handling to `closeReplay`, which also clears the ?replay= param.
+ */
+function useTakeover(): TakeoverState {
+  const { replaySessionId, explore, closeReplay } = useContextualApp();
+  const active =
+    replaySessionId !== null &&
+    explore.sessions.some((session) => session.id === replaySessionId);
+  return useMemo(
+    () => ({ active, dismissible: true, onDismiss: closeReplay }),
+    [active, closeReplay],
+  );
+}
+
 export const contextualApp: HudsonApp = {
   id: "contextual",
   name: "Contextual",
@@ -132,11 +150,13 @@ export const contextualApp: HudsonApp = {
     Content: AppContent,
     LeftPanel: AppLeftPanel,
     Inspector: AppInspector,
+    Takeover: SessionReplaySurface,
   },
 
   hooks: {
     useCommands,
     useStatus,
+    useTakeover,
     useNavCenter: () => <ContextualNavCenter />,
     useNavActions: () => <ContextualNavActions />,
   },
